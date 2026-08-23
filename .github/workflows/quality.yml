@@ -2,9 +2,9 @@ name: Code Quality & Linting
 
 on:
   push:
-    branches: [ main, development-home, development, feature/go-rewrite ]
+    branches: [ dev-go, main, development, feature/go-rewrite ]
   pull_request:
-    branches: [ main, development-home, development ]
+    branches: [ dev-go, main, development ]
 
 jobs:
   frontend-check:
