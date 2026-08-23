@@ -1,0 +1,38 @@
+name: CodeQL Security Analysis
+
+on:
+  push:
+    branches: [ main, development, feature/go-rewrite ]
+  pull_request:
+    branches: [ main, development ]
+  schedule:
+    - cron: '30 2 * * 1' # Every Monday at 02:30 UTC
+
+jobs:
+  analyze:
+    name: CodeQL Analysis (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'go', 'javascript-typescript' ]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: autobuild
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"

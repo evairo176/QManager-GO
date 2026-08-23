@@ -47,7 +47,7 @@ jobs:
           fi
 
           TITLE="${RELEASE_NAME:-$RELEASE_TAG}"
-          FOOTER="QManager ${RELEASE_TAG} • ${BADGE}"
+          FOOTER="QManager RM520N ${RELEASE_TAG} • ${BADGE}"
           TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
           # --- Truncate if over Discord's 4096 char limit ---

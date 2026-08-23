@@ -13,9 +13,11 @@
 # testing
 /coverage
 
-# next.js
+# next.js static export outputs
 /.next/
 /out/
+/backend/web/out/*
+!/backend/web/out/.gitkeep
 
 # production
 /build
@@ -43,6 +45,10 @@ next-env.d.ts
 # build artifacts
 qmanager-build/
 qmanager_install/
+RELEASE_NOTE.md
+
+# language-pack build output (maintainer `bun run lang build`)
+/dist/
 
 # claude superpowers
 /.superpowers
@@ -51,3 +57,20 @@ qmanager_install/
 
 # simpleadmin source
 /simpleadmin-source
+
+# bundled build tools (developer-local; not part of the repo)
+/tools/
+
+# Health check directory
+/health-checks/
+
+# Investigation scratch (probe scripts, raw logs)
+/scratch/
+# Go host build artifacts (device binary ships via build-discord-bot.sh tarball)
+discord-bot/*.exe
+
+# Reimagine directory
+/reimagine/
+
+# Rescue directory
+/scripts-dev/rescue/

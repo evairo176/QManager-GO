@@ -1,0 +1,14 @@
+[Unit]
+Description=QManager Go Core Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/qmanager-core
+Restart=always
+RestartSec=5
+Environment=PORT=80
+Environment=WEB_ROOT=/usrdata/qmanager/www
+
+[Install]
+WantedBy=multi-user.target

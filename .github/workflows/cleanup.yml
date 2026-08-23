@@ -1,0 +1,33 @@
+name: Cleanup Workflow Runs & Cache
+
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Every Sunday at midnight UTC
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    name: Purge Stale Runs & Cache
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Delete Old Workflow Runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: 14
+          keep_minimum_runs: 3
+
+      - name: Purge Caches
+        run: |
+          gh extension install actions/gh-actions-cache || true
+          REPO="${{ github.repository }}"
+          echo "Clearing cache for $REPO"
+          gh actions-cache delete --confirm --repo "$REPO" || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

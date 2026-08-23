@@ -1,0 +1,55 @@
+name: Release & Artifact Builder
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: Build & Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun (Frontend Builder)
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Go (Backend Compiler)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Install Frontend Dependencies & Export Static Assets
+        run: |
+          bun install
+          bun run build
+          mkdir -p backend/web/out
+          cp -r out/* backend/web/out/
+
+      - name: Cross-Compile Go ARMv7 Binary for RM520N-GL
+        run: |
+          cd backend
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o dist/qmanager-core ./cmd/server
+          cp qmanager-core.service dist/
+          cd dist
+          tar -czvf qmanager-core-armv7.tar.gz qmanager-core qmanager-core.service
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            backend/dist/qmanager-core
+            backend/dist/qmanager-core-armv7.tar.gz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
