@@ -105,7 +105,11 @@ func (c *Client) execOnModem(cmd string) (string, error) {
 		}
 	}
 
-	return strings.TrimSpace(response.String()), nil
+	res := strings.TrimSpace(response.String())
+	if res == "" {
+		return "", fmt.Errorf("no response from AT device %s", c.devicePath)
+	}
+	return res, nil
 }
 
 func (c *Client) execMock(cmd string) (string, error) {
