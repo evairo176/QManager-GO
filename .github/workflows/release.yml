@@ -24,7 +24,7 @@ jobs:
       - name: Setup Go (Backend Compiler)
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.x'
+          go-version: '1.22'
           cache: true
           cache-dependency-path: backend/go.sum
 
