@@ -36,7 +36,7 @@ func (s *Server) HandleTowerLock(w http.ResponseWriter, r *http.Request) {
 
 	var req TowerLockRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Type == "" || req.Action == "" {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"error":   "missing_fields",
 			"detail":  "type and action fields are required",
@@ -50,7 +50,7 @@ func (s *Server) HandleTowerLock(w http.ResponseWriter, r *http.Request) {
 		} else {
 			_, _ = s.atClient.Exec(`AT+QNWLOCK="common/5g",0`)
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "unlocked": true})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "unlocked": true})
 		return
 	}
 
@@ -64,7 +64,7 @@ func (s *Server) HandleTowerLock(w http.ResponseWriter, r *http.Request) {
 			}
 			resp, err := s.atClient.Exec(sb.String())
 			if err != nil || atHasError(resp) {
-				json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "at_error"})
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "at_error"})
 				return
 			}
 		} else if req.Type == "nr_sa" {
@@ -86,15 +86,15 @@ func (s *Server) HandleTowerLock(w http.ResponseWriter, r *http.Request) {
 			atCmd := fmt.Sprintf(`AT+QNWLOCK="common/5g",%d,%d,%d,%d`, pci, arfcn, scs, band)
 			resp, err := s.atClient.Exec(atCmd)
 			if err != nil || atHasError(resp) {
-				json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "at_error"})
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "at_error"})
 				return
 			}
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "locked": true})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "locked": true})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "invalid_action"})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "invalid_action"})
 }
 
 // HandleFrequencyLock handles frequency channel locking (EARFCN/ARFCN)
@@ -102,12 +102,12 @@ func (s *Server) HandleFrequencyLock(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method == http.MethodGet {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"locked":  false,
 		})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }

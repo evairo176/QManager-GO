@@ -22,7 +22,7 @@ func (s *Server) HandleProfilesList(w http.ResponseWriter, r *http.Request) {
 		{ID: "default", Name: "Default Carrier Profile", APN: "internet"},
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":  true,
 		"profiles": profiles,
 	})
@@ -31,7 +31,7 @@ func (s *Server) HandleProfilesList(w http.ResponseWriter, r *http.Request) {
 // HandleProfilesApply applies a selected profile
 func (s *Server) HandleProfilesApply(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"detail":  "Profile applied successfully",
 	})
@@ -41,7 +41,7 @@ func (s *Server) HandleProfilesApply(w http.ResponseWriter, r *http.Request) {
 func (s *Server) HandleScenariosList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":   true,
 		"scenarios": []interface{}{},
 	})

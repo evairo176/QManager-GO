@@ -9,7 +9,7 @@ import (
 func (s *Server) HandleHealthCheckStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"running": false,
 		"results": map[string]interface{}{
@@ -24,7 +24,7 @@ func (s *Server) HandleHealthCheckStatus(w http.ResponseWriter, r *http.Request)
 // HandleHealthCheckRun initiates system health check
 func (s *Server) HandleHealthCheckRun(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"detail":  "Health check started",
 	})
@@ -34,7 +34,7 @@ func (s *Server) HandleHealthCheckRun(w http.ResponseWriter, r *http.Request) {
 func (s *Server) HandleLanguagePacksList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"languages": []map[string]string{
 			{"code": "en", "name": "English"},
@@ -47,5 +47,5 @@ func (s *Server) HandleLanguagePacksList(w http.ResponseWriter, r *http.Request)
 // HandleLanguagePacksInstall installs a selected language pack
 func (s *Server) HandleLanguagePacksInstall(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }

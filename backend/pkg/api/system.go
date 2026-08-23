@@ -28,7 +28,7 @@ func (s *Server) HandleSystemReboot(w http.ResponseWriter, r *http.Request) {
 	if req.Action == "reconnect" {
 		_, _ = s.atClient.Exec("AT+COPS=2")
 		_, _ = s.atClient.Exec("AT+COPS=0")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"detail":  "Network reconnect initiated",
 		})
@@ -36,7 +36,7 @@ func (s *Server) HandleSystemReboot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Device reboot
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"detail":  "Device rebooting...",
 	})
@@ -55,7 +55,7 @@ func (s *Server) HandleSystemLogs(w http.ResponseWriter, r *http.Request) {
 		out, _ = exec.Command("dmesg").Output()
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"logs":    string(out),
 	})
@@ -65,7 +65,7 @@ func (s *Server) HandleSystemLogs(w http.ResponseWriter, r *http.Request) {
 func (s *Server) HandlePublicOverview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":       true,
 		"system_name":   "QManager RM520N",
 		"auth_required": true,

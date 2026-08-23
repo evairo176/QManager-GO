@@ -11,7 +11,7 @@ func (s *Server) HandleMonitoringAlerts(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method == http.MethodGet {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"alerts": map[string]interface{}{
 				"enabled": true,
@@ -23,7 +23,7 @@ func (s *Server) HandleMonitoringAlerts(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
 
 // HandleMonitoringWatchdog handles connection watchdog status and controls
@@ -31,20 +31,20 @@ func (s *Server) HandleMonitoringWatchdog(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method == http.MethodGet {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"watchdog": map[string]interface{}{
-				"enabled":      true,
-				"running":      true,
-				"ping_target":  "8.8.8.8",
-				"fail_count":   0,
+				"enabled":       true,
+				"running":       true,
+				"ping_target":   "8.8.8.8",
+				"fail_count":    0,
 				"recovery_step": 0,
 			},
 		})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
 
 // HandleVPNTailscale handles Tailscale status and login
@@ -54,10 +54,10 @@ func (s *Server) HandleVPNTailscale(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		out, err := exec.Command("tailscale", "status", "--json").Output()
 		if err == nil && len(out) > 0 {
-			w.Write(out)
+			_, _ = w.Write(out)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":   true,
 			"installed": false,
 			"running":   false,
@@ -65,5 +65,5 @@ func (s *Server) HandleVPNTailscale(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }

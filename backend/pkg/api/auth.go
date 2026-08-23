@@ -22,12 +22,12 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-type PasswordChangeRequest struct {
-	CurrentPassword string `json:"current_password"`
-	NewPassword     string `json:"new_password"`
+type LoginResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
 }
 
-// HandleAuthLogin processes login requests
+// HandleAuthLogin handles POST login requests and issues session cookie
 func (s *Server) HandleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -38,22 +38,23 @@ func (s *Server) HandleAuthLogin(w http.ResponseWriter, r *http.Request) {
 
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Password == "" {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "missing_password",
+		_ = json.NewEncoder(w).Encode(LoginResponse{
+			Success: false,
+			Error:   "missing_password",
 		})
 		return
 	}
 
-	// Default admin password or check stored hash
-	if req.Password != "admin" {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "invalid_password",
+	expectedPass := "admin" // Default fallback password for QManager
+	if req.Password != expectedPass {
+		_ = json.NewEncoder(w).Encode(LoginResponse{
+			Success: false,
+			Error:   "invalid_password",
 		})
 		return
 	}
 
+	// Generate session token
 	token := generateToken()
 	globalSessions.mu.Lock()
 	globalSessions.sessions[token] = time.Now().Add(24 * time.Hour)
@@ -63,17 +64,16 @@ func (s *Server) HandleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		Name:     "qmanager_session",
 		Value:    token,
 		Path:     "/",
+		Expires:  time.Now().Add(24 * time.Hour),
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
 	})
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"token":   token,
+	_ = json.NewEncoder(w).Encode(LoginResponse{
+		Success: true,
 	})
 }
 
-// HandleAuthLogout destroys session
+// HandleAuthLogout invalidates the session cookie
 func (s *Server) HandleAuthLogout(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -88,22 +88,22 @@ func (s *Server) HandleAuthLogout(w http.ResponseWriter, r *http.Request) {
 		Name:     "qmanager_session",
 		Value:    "",
 		Path:     "/",
-		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
 	})
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 	})
 }
 
-// HandleAuthCheck verifies session status
+// HandleAuthCheck verifies if the current session is valid
 func (s *Server) HandleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	cookie, err := r.Cookie("qmanager_session")
 	if err != nil || cookie.Value == "" {
-		json.NewEncoder(w).Encode(map[string]interface{}{"authenticated": false})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"authenticated": false})
 		return
 	}
 
@@ -112,11 +112,11 @@ func (s *Server) HandleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	globalSessions.mu.Unlock()
 
 	if !exists || time.Now().After(expiry) {
-		json.NewEncoder(w).Encode(map[string]interface{}{"authenticated": false})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"authenticated": false})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"authenticated": true})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"authenticated": true})
 }
 
 func generateToken() string {

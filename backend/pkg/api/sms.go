@@ -65,13 +65,13 @@ func (s *Server) handleGetSMS(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (s *Server) handlePostSMS(w http.ResponseWriter, r *http.Request) {
 	var req SMSActionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Action == "" {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"error":   "missing_action",
 			"detail":  "action field is required",
@@ -82,7 +82,7 @@ func (s *Server) handlePostSMS(w http.ResponseWriter, r *http.Request) {
 	switch req.Action {
 	case "send":
 		if req.Phone == "" || req.Message == "" {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"success": false,
 				"error":   "missing_fields",
 				"detail":  "phone and message are required",
@@ -93,7 +93,7 @@ func (s *Server) handlePostSMS(w http.ResponseWriter, r *http.Request) {
 		if _, err := exec.LookPath("sms_tool"); err == nil {
 			cmd := exec.Command("sms_tool", "send", req.Phone, req.Message)
 			if err := cmd.Run(); err != nil {
-				json.NewEncoder(w).Encode(map[string]interface{}{
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
 					"success": false,
 					"error":   "send_failed",
 					"detail":  err.Error(),
@@ -102,15 +102,15 @@ func (s *Server) handlePostSMS(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 
 	case "delete", "delete_all":
 		// Auto re-assert CPMS routing
 		_, _ = s.atClient.Exec(`AT+CPMS="ME","ME","ME"`)
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 
 	default:
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"error":   "invalid_action",
 			"detail":  "action must be send, delete, or delete_all",

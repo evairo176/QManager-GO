@@ -39,7 +39,7 @@ func (s *Server) HandleDataUsed(w http.ResponseWriter, r *http.Request) {
 
 	rx, tx, iface := readNetDevCounters()
 
-	json.NewEncoder(w).Encode(DataUsageResponse{
+	_ = json.NewEncoder(w).Encode(DataUsageResponse{
 		Success:    true,
 		RxBytes:    rx,
 		TxBytes:    tx,
@@ -62,7 +62,7 @@ func (s *Server) HandleCellScanStatus(w http.ResponseWriter, r *http.Request) {
 		results = []QScanCellResult{}
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":  true,
 		"scanning": scanning,
 		"results":  results,
