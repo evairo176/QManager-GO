@@ -25,7 +25,7 @@ jobs:
           bun run build
 
   go-test:
-    name: Run Go Unit Tests
+    name: Run Go Unit Tests & Vet
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -38,9 +38,10 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
-      - name: Run Package Tests
+      - name: Run Go Vet & Package Tests
         run: |
           cd backend
+          go vet ./...
           go test -v ./...
 
   golangci:
@@ -61,6 +62,5 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.64
-          install-mode: goinstall
           working-directory: backend
           args: --timeout=5m
