@@ -22,7 +22,7 @@ func (s *Server) HandleFetchPingHistory(w http.ResponseWriter, r *http.Request) 
 func serveNDJSONAsArray(w http.ResponseWriter, path string) {
 	file, err := os.Open(path)
 	if err != nil {
-		w.Write([]byte("[]"))
+		_, _ = w.Write([]byte("[]"))
 		return
 	}
 	defer file.Close()
@@ -46,9 +46,9 @@ func serveNDJSONAsArray(w http.ResponseWriter, path string) {
 
 	buf.WriteString("]")
 	if buf.Len() == 2 {
-		w.Write([]byte("[]"))
+		_, _ = w.Write([]byte("[]"))
 		return
 	}
 
-	w.Write(buf.Bytes())
+	_, _ = w.Write(buf.Bytes())
 }

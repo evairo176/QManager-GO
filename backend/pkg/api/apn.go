@@ -23,30 +23,31 @@ type APNResponse struct {
 	Success    bool         `json:"success"`
 	ActiveCID  int          `json:"active_cid"`
 	Profiles   []APNProfile `json:"profiles"`
+	MBNAttached string       `json:"mbn_attached,omitempty"`
 	Error      string       `json:"error,omitempty"`
 }
 
 type APNSaveRequest struct {
-	Action  string `json:"action"`
-	CID     int    `json:"cid"`
-	APN     string `json:"apn"`
-	PDPType string `json:"pdp_type"`
+	CID      int    `json:"cid"`
+	APN      string `json:"apn"`
+	PDPType  string `json:"pdp_type"`
+	AuthType int    `json:"auth_type"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
-// HandleAPN handles WAN profile listing and updates
+// HandleAPN handles GET and POST requests for APN contexts
 func (s *Server) HandleAPN(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method == http.MethodGet {
-		// Read PDP contexts from modem
-		resp, err := s.atClient.Exec(`AT+CGDCONT?`)
-		if err != nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "modem_error"})
+		raw, err := s.atClient.Exec("AT+CGDCONT?")
+		if err != nil || strings.Contains(raw, "ERROR") {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "modem_error"})
 			return
 		}
-
-		profiles := parseCGDCONT(resp)
-		json.NewEncoder(w).Encode(APNResponse{
+		profiles := parseAPNProfiles(raw)
+		_ = json.NewEncoder(w).Encode(APNResponse{
 			Success:   true,
 			ActiveCID: 1,
 			Profiles:  profiles,
@@ -56,14 +57,11 @@ func (s *Server) HandleAPN(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		var req APNSaveRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "invalid_json"})
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.CID <= 0 || req.APN == "" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "invalid_json"})
 			return
 		}
 
-		if req.CID <= 0 {
-			req.CID = 1
-		}
 		if req.PDPType == "" {
 			req.PDPType = "IPV4V6"
 		}
@@ -71,36 +69,43 @@ func (s *Server) HandleAPN(w http.ResponseWriter, r *http.Request) {
 		atCmd := fmt.Sprintf(`AT+CGDCONT=%d,"%s","%s"`, req.CID, req.PDPType, req.APN)
 		resp, err := s.atClient.Exec(atCmd)
 		if err != nil || atHasError(resp) {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "at_error"})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "at_error"})
 			return
 		}
 
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+		if req.AuthType > 0 {
+			authCmd := fmt.Sprintf(`AT+QICSGP=%d,%d,"%s","%s","%s",1`, req.CID, req.AuthType, req.APN, req.Username, req.Password)
+			_, _ = s.atClient.Exec(authCmd)
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "cid": req.CID})
 		return
 	}
 
 	http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
 }
 
-// HandleMBN handles MBN profile query and switching
+// HandleMBN handles MBN profile query
 func (s *Server) HandleMBN(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	if r.Method == http.MethodGet {
-		resp, _ := s.atClient.Exec(`AT+QMBNCFG="list"`)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": true,
-			"raw":     resp,
-			"active":  "ROW_Generic_3GPP",
+	raw, err := s.atClient.Exec(`AT+QMBNCFG="select"`)
+	if err != nil || strings.Contains(raw, "ERROR") {
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "modem_error",
 		})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":  true,
+		"raw_response": raw,
+	})
 }
 
-func parseCGDCONT(raw string) []APNProfile {
-	profiles := []APNProfile{}
+func parseAPNProfiles(raw string) []APNProfile {
+	var profiles []APNProfile
 	lines := strings.Split(raw, "\n")
 	for _, line := range lines {
 		if strings.HasPrefix(line, "+CGDCONT:") {

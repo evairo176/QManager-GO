@@ -83,7 +83,7 @@ func (s *Server) HandleFetchData(w http.ResponseWriter, r *http.Request) {
 	cacheFile := "/tmp/qmanager_status.json"
 	data, err := os.ReadFile(cacheFile)
 	if err == nil && len(data) > 0 {
-		w.Write(data)
+		_, _ = w.Write(data)
 		return
 	}
 
@@ -116,7 +116,7 @@ func (s *Server) HandleFetchData(w http.ResponseWriter, r *http.Request) {
 			"lte_category": "", "mimo": "",
 		},
 	}
-	json.NewEncoder(w).Encode(fallback)
+	_ = json.NewEncoder(w).Encode(fallback)
 }
 
 type CommandRequest struct {
@@ -134,7 +134,7 @@ func (s *Server) HandleSendCommand(w http.ResponseWriter, r *http.Request) {
 
 	var req CommandRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Command == "" {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"error":   "no_command",
 			"message": "Missing command field in JSON body",
@@ -144,7 +144,7 @@ func (s *Server) HandleSendCommand(w http.ResponseWriter, r *http.Request) {
 
 	cmdUpper := strings.ToUpper(req.Command)
 	if strings.Contains(cmdUpper, "QSCAN") || strings.Contains(cmdUpper, "QSCANFREQ") {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"error":   "blocked",
 			"message": "Use the Cell Scanner page for this command.",
@@ -154,7 +154,7 @@ func (s *Server) HandleSendCommand(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := s.atClient.Exec(req.Command)
 	if err != nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":  false,
 			"error":    "exec_failed",
 			"response": err.Error(),
@@ -163,20 +163,20 @@ func (s *Server) HandleSendCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":  true,
 		"response": resp,
 		"command":  req.Command,
 	})
 }
 
-// HandleBandsCurrent queries currently configured bands from modem
+// HandleBandsCurrent queries configured bands from modem
 func (s *Server) HandleBandsCurrent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	raw, err := s.atClient.Exec(`AT+QNWPREFCFG="ue_capability_band"`)
 	if err != nil || strings.Contains(raw, "ERROR") {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"error":   "modem_error",
 			"message": "Failed to query current band configuration",
@@ -192,7 +192,7 @@ func (s *Server) HandleBandsCurrent(w http.ResponseWriter, r *http.Request) {
 	failoverActivated := fileExists("/tmp/qmanager_band_failover")
 	watcherRunning := fileExists("/tmp/qmanager_band_failover.pid")
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"current": map[string]string{
 			"lte_bands":      lteBands,
