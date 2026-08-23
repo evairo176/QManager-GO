@@ -51,18 +51,11 @@ func main() {
 	})
 
 	// Static File Server: Embedded FS or Disk Fallback
-	var staticFS http.FileSystem
 	if webRoot != "" {
 		log.Printf("[Web] Serving static assets from disk path: %s", webRoot)
-		staticFS = http.Dir(webRoot)
-	} else {
-		log.Println("[Web] Serving static assets from embedded binary (embed.FS)")
-		staticFS = web.GetFileSystem()
-	}
-
-	fs := http.FileServer(staticFS)
-	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if webRoot != "" {
+		diskFS := http.Dir(webRoot)
+		fileServer := http.FileServer(diskFS)
+		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := filepath.Join(webRoot, filepath.Clean(r.URL.Path))
 			info, err := os.Stat(path)
 			if err != nil && os.IsNotExist(err) {
@@ -73,9 +66,12 @@ func main() {
 				http.ServeFile(w, r, filepath.Join(path, "index.html"))
 				return
 			}
-		}
-		fs.ServeHTTP(w, r)
-	}))
+			fileServer.ServeHTTP(w, r)
+		}))
+	} else {
+		log.Println("[Web] Serving static assets from embedded binary (embed.FS all:out)")
+		mux.Handle("/", web.ServeEmbeddedWeb())
+	}
 
 	// Setup HTTPS TLS Certificates if enabled
 	if tlsEnabled {

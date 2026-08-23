@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
-	"regexp"
+	"strings"
 )
 
 type CellularSettingsResponse struct {
@@ -145,5 +145,5 @@ func (s *Server) HandleTTLSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func atContains(resp, substr string) bool {
-	return regexp.MustCompile(substr).MatchString(resp)
+	return strings.Contains(resp, substr)
 }

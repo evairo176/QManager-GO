@@ -12,10 +12,10 @@ import (
 )
 
 type Server struct {
-	atClient *at.Client
+	atClient at.Executor
 }
 
-func NewServer(atClient *at.Client) *Server {
+func NewServer(atClient at.Executor) *Server {
 	return &Server{atClient: atClient}
 }
 

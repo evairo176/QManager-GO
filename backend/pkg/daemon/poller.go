@@ -11,11 +11,11 @@ import (
 )
 
 type Poller struct {
-	atClient *at.Client
+	atClient at.Executor
 	interval time.Duration
 }
 
-func NewPoller(atClient *at.Client, interval time.Duration) *Poller {
+func NewPoller(atClient at.Executor, interval time.Duration) *Poller {
 	if interval <= 0 {
 		interval = 5 * time.Second
 	}
