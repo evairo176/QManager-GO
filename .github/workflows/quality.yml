@@ -2,13 +2,30 @@ name: Code Quality & Linting
 
 on:
   push:
-    branches: [ main, development, feature/go-rewrite ]
+    branches: [ main, development-home, development, feature/go-rewrite ]
   pull_request:
-    branches: [ main, development ]
+    branches: [ main, development-home, development ]
 
 jobs:
-  test:
-    name: Run Unit Tests
+  frontend-check:
+    name: Frontend Build & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies & Run Typecheck Build
+        run: |
+          bun install
+          bun run build
+
+  go-test:
+    name: Run Go Unit Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -19,6 +36,7 @@ jobs:
         with:
           go-version: '1.26.x'
           cache: true
+          cache-dependency-path: backend/go.sum
 
       - name: Run Package Tests
         run: |
@@ -26,7 +44,7 @@ jobs:
           go test -v ./...
 
   golangci:
-    name: Lint & Static Check
+    name: Go Lint & Static Check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -37,6 +55,7 @@ jobs:
         with:
           go-version: '1.26.x'
           cache: true
+          cache-dependency-path: backend/go.sum
 
       - name: GolangCI-Lint Static Verification
         uses: golangci/golangci-lint-action@v6

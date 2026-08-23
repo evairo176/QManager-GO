@@ -35,21 +35,36 @@ jobs:
           mkdir -p backend/web/out
           cp -r out/* backend/web/out/
 
-      - name: Cross-Compile Go ARMv7 Binary for RM520N-GL
+      - name: Cross-Compile Go Executables (ARMv7, ARM64, AMD64)
         run: |
           cd backend
           mkdir -p dist
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o dist/qmanager-core ./cmd/server
-          cp qmanager-core.service dist/
-          cd dist
-          tar -czvf qmanager-core-armv7.tar.gz qmanager-core qmanager-core.service
+
+          # 1. Linux ARMv7 (Quectel RM520N / SDXLEMUR / 32-bit ARM)
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o dist/qmanager-core-armv7 ./cmd/server
+          tar -czvf dist/qmanager-core-armv7.tar.gz -C dist qmanager-core-armv7 -C .. qmanager-core.service
+
+          # 2. Linux ARM64 / AArch64 (Raspberry Pi 4/5, NanoPi, ARM64 Routers)
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/qmanager-core-arm64 ./cmd/server
+          tar -czvf dist/qmanager-core-arm64.tar.gz -C dist qmanager-core-arm64 -C .. qmanager-core.service
+
+          # 3. Linux AMD64 / x86_64 (x86 Routers, PC, VMs)
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/qmanager-core-amd64 ./cmd/server
+          tar -czvf dist/qmanager-core-amd64.tar.gz -C dist qmanager-core-amd64 -C .. qmanager-core.service
+
+          # Default armv7 alias for backward compatibility
+          cp dist/qmanager-core-armv7 dist/qmanager-core
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            backend/dist/qmanager-core
             backend/dist/qmanager-core-armv7.tar.gz
+            backend/dist/qmanager-core-arm64.tar.gz
+            backend/dist/qmanager-core-amd64.tar.gz
+            backend/dist/qmanager-core
+            deploy.sh
+            deploy.ps1
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
