@@ -24,7 +24,7 @@ func (s *Server) HandleBandsLock(w http.ResponseWriter, r *http.Request) {
 
 	var req BandLockRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.BandType == "" || req.Bands == "" {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"error":   "missing_fields",
 			"detail":  "band_type and bands fields are required",
@@ -41,7 +41,7 @@ func (s *Server) HandleBandsLock(w http.ResponseWriter, r *http.Request) {
 	case "sa_nr5g":
 		atCmdType = "nr5g_band"
 	default:
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"error":   "invalid_band_type",
 			"detail":  "band_type must be lte, nsa_nr5g, or sa_nr5g",
@@ -51,7 +51,7 @@ func (s *Server) HandleBandsLock(w http.ResponseWriter, r *http.Request) {
 
 	// Validate bands format (e.g. "1:3:7:28" or "all")
 	if req.Bands != "all" && !regexp.MustCompile(`^[0-9]+(:[0-9]+)*$`).MatchString(req.Bands) {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"error":   "invalid_bands",
 			"detail":  "bands must be colon-delimited numbers or 'all'",
@@ -62,7 +62,7 @@ func (s *Server) HandleBandsLock(w http.ResponseWriter, r *http.Request) {
 	atCmd := fmt.Sprintf(`AT+QNWPREFCFG="%s",%s`, atCmdType, req.Bands)
 	resp, err := s.atClient.Exec(atCmd)
 	if err != nil || atHasError(resp) {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"error":   "modem_error",
 			"detail":  "Failed to send band lock command to modem",
@@ -73,7 +73,7 @@ func (s *Server) HandleBandsLock(w http.ResponseWriter, r *http.Request) {
 	// Clear failover flag
 	_ = os.Remove("/tmp/qmanager_band_failover")
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":        true,
 		"band_type":      req.BandType,
 		"bands":          req.Bands,

@@ -32,7 +32,7 @@ func (s *Server) HandleCellularSettings(w http.ResponseWriter, r *http.Request) 
 			slot = 2
 		}
 
-		json.NewEncoder(w).Encode(CellularSettingsResponse{
+		_ = json.NewEncoder(w).Encode(CellularSettingsResponse{
 			Success: true,
 			Settings: map[string]interface{}{
 				"sim_slot":    slot,
@@ -46,7 +46,7 @@ func (s *Server) HandleCellularSettings(w http.ResponseWriter, r *http.Request) 
 	if r.Method == http.MethodPost {
 		var req CellularSettingsUpdateRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "invalid_json"})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "invalid_json"})
 			return
 		}
 
@@ -55,7 +55,7 @@ func (s *Server) HandleCellularSettings(w http.ResponseWriter, r *http.Request) 
 			_, _ = s.atClient.Exec(atCmd)
 		}
 
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 		return
 	}
 
@@ -72,7 +72,7 @@ func (s *Server) HandleIMEISettings(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodGet {
 		resp, _ := s.atClient.Exec(`AT+GSN`)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"imei":    resp,
 		})
@@ -82,7 +82,7 @@ func (s *Server) HandleIMEISettings(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		var req IMEISettingsRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IMEI) != 15 {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"success": false,
 				"error":   "invalid_imei",
 				"detail":  "IMEI must be 15 digits",
@@ -93,11 +93,11 @@ func (s *Server) HandleIMEISettings(w http.ResponseWriter, r *http.Request) {
 		atCmd := fmt.Sprintf(`AT+EGMR=1,7,"%s"`, req.IMEI)
 		resp, err := s.atClient.Exec(atCmd)
 		if err != nil || atHasError(resp) {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "at_error"})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "at_error"})
 			return
 		}
 
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 		return
 	}
 }
@@ -112,7 +112,7 @@ func (s *Server) HandleTTLSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method == http.MethodGet {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"ttl": map[string]interface{}{
 				"enabled": true,
@@ -125,7 +125,7 @@ func (s *Server) HandleTTLSettings(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		var req TTLSettingsRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "invalid_json"})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "invalid_json"})
 			return
 		}
 
@@ -139,7 +139,7 @@ func (s *Server) HandleTTLSettings(w http.ResponseWriter, r *http.Request) {
 			_ = exec.Command("sh", "-c", cmdStr).Run()
 		}
 
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 		return
 	}
 }
