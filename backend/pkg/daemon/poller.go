@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -58,9 +59,13 @@ func (p *Poller) pollOnce() {
 		return
 	}
 
-	// Write status atomically to /tmp/qmanager_status.json
-	tmpFile := "/tmp/qmanager_status.json.tmp"
-	targetFile := "/tmp/qmanager_status.json"
+	tmpDir := os.TempDir()
+	if _, err := os.Stat("/tmp"); err == nil {
+		tmpDir = "/tmp"
+	}
+
+	tmpFile := filepath.Join(tmpDir, "qmanager_status.json.tmp")
+	targetFile := filepath.Join(tmpDir, "qmanager_status.json")
 
 	if err := os.WriteFile(tmpFile, data, 0644); err == nil {
 		_ = os.Rename(tmpFile, targetFile)
