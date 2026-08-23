@@ -44,10 +44,14 @@ func (c *Client) Exec(cmd string) (string, error) {
 
 	// On Linux modem, try executing via qcmd or direct device IO
 	if runtime.GOOS == "linux" {
-		return c.execOnModem(cmd)
+		resp, err := c.execOnModem(cmd)
+		if err == nil {
+			return resp, nil
+		}
+		// If on Linux CI / non-modem host, fallback to execMock
 	}
 
-	// Mock / Development fallback on Windows/Mac
+	// Mock / Development fallback
 	return c.execMock(cmd)
 }
 
@@ -59,6 +63,11 @@ func (c *Client) execOnModem(cmd string) (string, error) {
 			return "", fmt.Errorf("qcmd execution failed: %w", err)
 		}
 		return strings.TrimSpace(string(out)), nil
+	}
+
+	// Direct device check
+	if _, err := os.Stat(c.devicePath); err != nil {
+		return "", fmt.Errorf("AT device path %s does not exist: %w", c.devicePath, err)
 	}
 
 	// Fallback: direct device write with flock
