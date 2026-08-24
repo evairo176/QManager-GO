@@ -85,7 +85,7 @@ The same Skip Phrases still apply — "just do it" drops orchestration back to a
 
 ## Design Context
 
-See **`PRODUCT.md`** (strategic: register, users, brand personality, anti-references, the six design principles including the safety principle, accessibility) and **`DESIGN.md`** (visual: OKLCH tokens incl. Signal Indigo as the single action accent and a lighter shade of it as the quiet secondary control, Manrope UI typography + scoped JetBrains Mono, status-badge pattern, hybrid elevation, mosaic dashboard composition, signature components — Topology Map / Circular Signal Meter / Live Data Tile, Apple-class motion contracts, full Do's and Don'ts).
+See **`docs/design/PRODUCT.md`** (strategic: register, users, brand personality, anti-references, the six design principles including the safety principle, accessibility) and **`docs/design/DESIGN.md`** (visual: OKLCH tokens incl. Signal Indigo as the single action accent and a lighter shade of it as the quiet secondary control, Manrope UI typography + scoped JetBrains Mono, status-badge pattern, hybrid elevation, mosaic dashboard composition, signature components — Topology Map / Circular Signal Meter / Live Data Tile, Apple-class motion contracts, full Do's and Don'ts).
 
 Quick reminders the visual spec enforces:
 - **Status badges**: always `variant="outline"` + `bg-{role}/15 text-{role} border-{role}/30` + `size-3` lucide icon. Solid variants are forbidden in feature surfaces. Reusable wrapper: `ServiceStatusBadge` at `components/local-network/service-status-badge.tsx`.

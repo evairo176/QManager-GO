@@ -8,7 +8,7 @@
     "start": "bun --bun next start",
     "lint": "eslint",
     "package": "bash build-go.sh",
-    "package:lang": "bun run scripts-dev/build-lang-pack.ts",
+    "package:lang": "bun run scripts/dev/build-lang-pack.ts",
     "i18n:check": "bun run src/lib/i18n/check.ts",
     "test:i18n": "bun test src/lib/i18n"
   },

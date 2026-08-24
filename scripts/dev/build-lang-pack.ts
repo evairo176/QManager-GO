@@ -9,7 +9,7 @@ const repoRoot = process.cwd();
 const availableLangsPath = join(repoRoot, "src/lib/i18n/available-languages.ts");
 const langPacksShPath = join(repoRoot, "scripts/usr/lib/qmanager/language_packs.sh");
 const publicLocalesDir = join(repoRoot, "public/locales");
-const manifestPath = join(repoRoot, "language-packs/manifest.json");
+const manifestPath = join(repoRoot, "docs/language-packs/manifest.json");
 const outDir = join(repoRoot, "qmanager-build/lang");
 
 // Normalize backslashes to forward slashes. Used for relative paths passed to
