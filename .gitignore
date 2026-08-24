@@ -48,6 +48,7 @@ next-env.d.ts
 qmanager-build/
 qmanager_install/
 RELEASE_NOTE.md
+!docs/releases/RELEASE_NOTE.md
 
 # language-pack build output (maintainer `bun run lang build`)
 /dist/

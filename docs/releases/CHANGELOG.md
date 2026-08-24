@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [v0.2.2-go] - 2026-08-24
+
+### 🚀 Added & Enhanced
+- **Real-Time Telemetry via Server-Sent Events (SSE)** (`pkg/api/sse.go` & `use-sse-telemetry.ts`): Replaced 1s HTTP polling with high-performance, low-overhead SSE push stream (`/cgi-bin/quecmanager/api/stream/status`).
+- **Built-In Native Speedtest Engine** (`pkg/speedtest/speedtest.go` & `speedtest-card.tsx`): Native Go multi-threaded HTTP latency, download, and upload throughput tester.
+- **Native nftables & DPI Rules Manager** (`pkg/firewall/firewall.go`): Native rule generator and file manager for `/etc/nftables.d/12-mangle-qmanager-dpi.nft` supporting NFQUEUE 200 packet inspection and TTL mangle modification.
+- **Dual-SIM & eSIM Manager** (`pkg/modem/sim.go` & `sim-slot-card.tsx`): Hardware SIM slot query (`AT+QUIMSLOT?`), slot switching (`AT+QUIMSLOT=1/2`), and ICCID parser (`AT+QCCID`).
+- **AES-256-GCM Encrypted Backup & Restore** (`pkg/backup/backup.go`): PBKDF2 (SHA-256) password-protected encryption for `.qmbackup` configuration archives.
+- **In-Memory Token Bucket Rate Limiter & Brute-Force Guard** (`pkg/api/ratelimit.go`): Protected login and serial AT command execution against brute-force and flooding attacks.
+- **Native Watchdog Goroutine** (`pkg/daemon/watchdog.go`): Non-blocking TCP/HTTP connectivity probe goroutine updating system watchdog status without external shell scripts.
+- **OpenWRT UCI Native Go Parser** (`pkg/uci/uci.go`): Zero-dependency thread-safe UCI config parser and serializer.
+
+### 🛠️ Changed & Optimized
+- **GitHub Actions CI Optimization**: Added Bun store caching, Next.js `.next/cache` restoration, and `concurrency` cancellation, reducing workflow run times by ~60%.
+- **Upstream Repository & Language Pack Routing**: Repointed all OTA update daemons, bootstrap installer (`qmanager-installer.sh`), and i18n language pack manifests to `latifangren/QManager-GO`.
+
 ## [v0.2.1-go] - 2026-08-24
 
 ### 🛠️ Changed & Refactored
