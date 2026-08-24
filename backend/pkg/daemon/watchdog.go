@@ -28,7 +28,6 @@ type Watchdog struct {
 	stopChan      chan struct{}
 	mu            sync.Mutex
 	status        WatchdogStatus
-	isTesting     bool
 	pingFunc      func(host string) bool
 }
 
