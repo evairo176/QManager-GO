@@ -257,16 +257,18 @@ async function publishToGitHub(archivePath: string, archiveName: string): Promis
     fail("gh CLI not found. Install from https://cli.github.com and run 'gh auth login'.");
   }
 
-  // 2. Detect repo owner/name
-  const repoResult = Bun.spawnSync(
-    ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+  // 2. Detect repo owner/name from git origin remote
+  let nameWithOwner = "latifangren/QManager-GO";
+  const gitRemoteResult = Bun.spawnSync(
+    ["git", "remote", "get-url", "origin"],
     { stdout: "pipe", stderr: "pipe" },
   );
-  const nameWithOwner = repoResult.stdout
-    ? new TextDecoder().decode(repoResult.stdout).trim()
-    : "";
-  if (repoResult.exitCode !== 0 || !nameWithOwner) {
-    fail("Could not detect GitHub repo. Make sure you are inside a GitHub-backed git repo and 'gh auth login' has been run.");
+  if (gitRemoteResult.exitCode === 0 && gitRemoteResult.stdout) {
+    const remoteUrl = new TextDecoder().decode(gitRemoteResult.stdout).trim();
+    const match = remoteUrl.match(/github\.com[:/]([^/]+\/[^/.]+)(?:\.git)?$/);
+    if (match && match[1]) {
+      nameWithOwner = match[1];
+    }
   }
 
   // 3. Persistent release tag
@@ -274,7 +276,7 @@ async function publishToGitHub(archivePath: string, archiveName: string): Promis
 
   // 4. Ensure the release exists; create it if not
   const viewResult = Bun.spawnSync(
-    ["gh", "release", "view", RELEASE_TAG, "--json", "tagName"],
+    ["gh", "release", "view", RELEASE_TAG, "--repo", nameWithOwner, "--json", "tagName"],
     { stdout: "pipe", stderr: "pipe" },
   );
   if (viewResult.exitCode !== 0) {
@@ -282,6 +284,7 @@ async function publishToGitHub(archivePath: string, archiveName: string): Promis
     const createResult = Bun.spawnSync(
       [
         "gh", "release", "create", RELEASE_TAG,
+        "--repo", nameWithOwner,
         "--title", "Language Packs",
         "--notes", "Persistent release hosting QManager language pack tarballs. Assets are updated automatically — do not delete this release.",
         "--latest=false",
@@ -297,7 +300,7 @@ async function publishToGitHub(archivePath: string, archiveName: string): Promis
   // 5. Upload tarball (--clobber replaces existing asset with same filename)
   log(`Uploading ${archiveName} to '${RELEASE_TAG}' release...`);
   const uploadResult = Bun.spawnSync(
-    ["gh", "release", "upload", RELEASE_TAG, archivePath, "--clobber"],
+    ["gh", "release", "upload", RELEASE_TAG, archivePath, "--repo", nameWithOwner, "--clobber"],
     { stdout: "pipe", stderr: "pipe" },
   );
   if (uploadResult.exitCode !== 0) {
@@ -488,18 +491,19 @@ async function main() {
 
   // 13. Push manifest to git (--push)
   if (push) {
-    log("Committing and pushing language-packs/manifest.json...");
-    const gitAdd = Bun.spawnSync(["git", "add", "language-packs/manifest.json"], {
+    const relManifest = relative(repoRoot, manifestPath);
+    log(`Committing and pushing ${relManifest}...`);
+    const gitAdd = Bun.spawnSync(["git", "add", relManifest], {
       cwd: repoRoot, stdout: "pipe", stderr: "pipe",
     });
     if (gitAdd.exitCode !== 0) {
       fail(`git add failed: ${new TextDecoder().decode(gitAdd.stderr)}`);
     }
-    const gitDiff = Bun.spawnSync(["git", "diff", "--cached", "--exit-code", "language-packs/manifest.json"], {
+    const gitDiff = Bun.spawnSync(["git", "diff", "--cached", "--exit-code", relManifest], {
       cwd: repoRoot, stdout: "pipe", stderr: "pipe",
     });
     if (gitDiff.exitCode === 0) {
-      warn("manifest.json is already up to date in git — skipping commit and push.");
+      warn(`${relManifest} is already up to date in git — skipping commit and push.`);
     } else {
       const commitMsg = `chore(lang): update manifest for ${code} ${version}`;
       const gitCommit = Bun.spawnSync(["git", "commit", "-m", commitMsg], {
