@@ -77,6 +77,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/cgi-bin/quecmanager/system/health-check/run.sh", s.HandleHealthCheckRun)
 	mux.HandleFunc("/cgi-bin/quecmanager/system/language-packs/list.sh", s.HandleLanguagePacksList)
 	mux.HandleFunc("/cgi-bin/quecmanager/system/language-packs/install.sh", s.HandleLanguagePacksInstall)
+
+	// Real-Time Telemetry SSE Stream
+	mux.HandleFunc("/cgi-bin/quecmanager/api/stream/status", s.HandleSSEStream)
 }
 
 // HandleFetchData reads status from /tmp/qmanager_status.json or returns fallback
