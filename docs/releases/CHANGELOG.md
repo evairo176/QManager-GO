@@ -6,7 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
-## [Unreleased] / [v0.1.32-go] - 2026-08-24
+## [v0.2.1-go] - 2026-08-24
+
+### 🛠️ Changed & Refactored
+- **Native `src/` Directory Layout**: Migrated all Next.js frontend code (`app/`, `components/`, `hooks/`, `lib/`, `types/`, `constants/`) into standard `src/` directory with clean `@/*` path mapping in `tsconfig.json` & `components.json`.
+- **Root Repository Organization**: Organized multi-language READMEs to `docs/readme/`, design specifications to `docs/design/`, release logs to `docs/releases/`, dev scripts to `scripts/dev/`, and language pack manifest to `docs/language-packs/`.
+- **Core Documentation Sync**: Updated `CLAUDE.md`, `docs/ARCHITECTURE.md`, `docs/BACKEND.md`, and `docs/DEPLOYMENT.md` to accurately reflect single-binary Go architecture (`qmanager-core`).
+
+## [v0.2.0-go] - 2026-08-24
 
 ### 🚀 Added
 - **Native Go Core Engine (`qmanager-core`)**: Replaced lighttpd, shell CGI handlers, and process subshell spawning with a single compiled Go binary (`qmanager-core`).

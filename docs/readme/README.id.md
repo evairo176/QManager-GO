@@ -5,7 +5,7 @@
   <h3>Panel Kontrol & Engine Komunikasi Modem Seluler Berbasis Go Versi Universal</h3>
   <p>Visualisasi, konfigurasi, dan optimasi modem seluler Quectel & Universal dengan backend Go yang sangat ringan dan antarmuka React 19 UI</p>
 
-  ![Version](https://img.shields.io/badge/version-v0.2.0--go-blue?style=flat-square)
+  ![Version](https://img.shields.io/badge/version-v0.2.1--go-blue?style=flat-square)
   ![Go](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square)
   ![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square)
   ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square)
