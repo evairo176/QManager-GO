@@ -7,7 +7,7 @@
     "build": "bun --bun next build",
     "start": "bun --bun next start",
     "lint": "eslint",
-    "package": "bun --bun next build && bash build.sh",
+    "package": "bash build-go.sh",
     "package:lang": "bun run scripts-dev/build-lang-pack.ts",
     "i18n:check": "bun run lib/i18n/check.ts",
     "test:i18n": "bun test lib/i18n"
