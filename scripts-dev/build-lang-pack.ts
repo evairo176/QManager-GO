@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 // Paths - resolve relative to repo root (the cwd when bun invokes this)
 // ---------------------------------------------------------------------------
 const repoRoot = process.cwd();
-const availableLangsPath = join(repoRoot, "lib/i18n/available-languages.ts");
+const availableLangsPath = join(repoRoot, "src/lib/i18n/available-languages.ts");
 const langPacksShPath = join(repoRoot, "scripts/usr/lib/qmanager/language_packs.sh");
 const publicLocalesDir = join(repoRoot, "public/locales");
 const manifestPath = join(repoRoot, "language-packs/manifest.json");

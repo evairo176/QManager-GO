@@ -12,12 +12,12 @@ describe("available-languages", () => {
     expect(BUNDLED_CODES).toEqual(["en", "zh-CN"]);
   });
 
-  it("has 4 catalog entries (2 bundled + 2 downloadable placeholders, all LTR)", () => {
-    expect(AVAILABLE_LANGUAGES).toHaveLength(4);
+  it("has 5 catalog entries (2 bundled + 3 downloadable placeholders, all LTR)", () => {
+    expect(AVAILABLE_LANGUAGES).toHaveLength(5);
     const bundled = AVAILABLE_LANGUAGES.filter((l) => l.bundled);
     const downloadable = AVAILABLE_LANGUAGES.filter((l) => !l.bundled);
     expect(bundled).toHaveLength(2);
-    expect(downloadable).toHaveLength(2);
+    expect(downloadable).toHaveLength(3);
   });
 
   it("contains no RTL languages in v1 — RTL support parked", () => {
