@@ -19,9 +19,10 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install Dependencies & Run Typecheck Build
+      - name: Install Dependencies & Run Typecheck Build & UI Tests
         run: |
           bun install
+          bun run test:ui
           bun run build
 
   go-test:
