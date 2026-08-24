@@ -1,17 +1,17 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-07-18T10:43:28Z",
+  "generated_at": "2026-08-24T16:44:15Z",
   "packs": [
     {
       "code": "id",
       "native_name": "Indonesia",
       "english_name": "Indonesian",
       "rtl": false,
-      "version": "2026.07.18",
+      "version": "2026.08.24",
       "completeness": 0.998,
-      "size_bytes": 49588,
-      "sha256": "00c045fc05b59fbd0c65601232e132cf0e01093ad4a528ed08e9a88b61bcfac1",
-      "url": "https://github.com/latifangren/QManager-GO/releases/download/language-packs/qmanager-lang-id-2026.07.18.tar.gz",
+      "size_bytes": 49510,
+      "sha256": "d24bfdb9320e56b77cacbdedd48fac41e707412032b22088c34c823a64dcd467",
+      "url": "https://github.com/latifangren/QManager-GO/releases/download/language-packs/qmanager-lang-id-2026.08.24.tar.gz",
       "contributors": [
         "@ikhsanh"
       ]
