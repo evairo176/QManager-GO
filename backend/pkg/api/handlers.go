@@ -21,14 +21,17 @@ func NewServer(atClient at.Executor) *Server {
 
 // RegisterRoutes registers all QManager API routes
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
+	loginLimiter := NewIPRateLimiter(0.1, 5)     // 5 attempts burst, 1 refill per 10s
+	atCmdLimiter := NewIPRateLimiter(10.0, 20)    // 10 req/s, burst 20
+
 	// Auth Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/auth/login.sh", s.HandleAuthLogin)
+	mux.HandleFunc("/cgi-bin/quecmanager/auth/login.sh", RateLimitMiddleware(loginLimiter, s.HandleAuthLogin))
 	mux.HandleFunc("/cgi-bin/quecmanager/auth/logout.sh", s.HandleAuthLogout)
 	mux.HandleFunc("/cgi-bin/quecmanager/auth/check.sh", s.HandleAuthCheck)
 
 	// Modem & Core API Routes
 	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/fetch_data.sh", s.HandleFetchData)
-	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/send_command.sh", s.HandleSendCommand)
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/send_command.sh", RateLimitMiddleware(atCmdLimiter, s.HandleSendCommand))
 	mux.HandleFunc("/cgi-bin/quecmanager/bands/current.sh", s.HandleBandsCurrent)
 	mux.HandleFunc("/cgi-bin/quecmanager/bands/lock.sh", s.HandleBandsLock)
 	mux.HandleFunc("/cgi-bin/quecmanager/cellular/sms.sh", s.HandleSMS)

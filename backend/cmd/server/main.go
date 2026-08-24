@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"time"
 
 	"qmanager-backend/pkg/api"
@@ -39,6 +42,11 @@ func main() {
 	poller := daemon.NewPoller(atClient, 5*time.Second)
 	poller.Start()
 	log.Println("[Daemon] Background Status Poller started (5s interval)")
+
+	// Start Background Watchdog Daemon (monitors connectivity natively)
+	watchdog := daemon.NewWatchdog("1.1.1.1", 30*time.Second, 3)
+	watchdog.Start()
+	log.Println("[Daemon] Background Watchdog started (30s interval, target 1.1.1.1)")
 
 	// Register API Routes
 	server := api.NewServer(atClient)
@@ -73,6 +81,13 @@ func main() {
 		mux.Handle("/", web.ServeEmbeddedWeb())
 	}
 
+	httpServer := &http.Server{
+		Addr:    ":" + port,
+		Handler: mux,
+	}
+
+	var tlsServer *http.Server
+
 	// Setup HTTPS TLS Certificates if enabled
 	if tlsEnabled {
 		certPath, keyPath, err := tlsgen.EnsureCertificates("")
@@ -80,16 +95,51 @@ func main() {
 			log.Printf("[TLS] Warning: Failed to initialize TLS certs: %v", err)
 		} else {
 			log.Printf("[TLS] HTTPS Enabled on port %s (cert: %s)", tlsPort, certPath)
+			tlsServer = &http.Server{
+				Addr:    ":" + tlsPort,
+				Handler: mux,
+			}
 			go func() {
-				if err := http.ListenAndServeTLS(":"+tlsPort, certPath, keyPath, mux); err != nil {
+				if err := tlsServer.ListenAndServeTLS(certPath, keyPath); err != nil && err != http.ErrServerClosed {
 					log.Printf("[TLS] HTTPS server stopped: %v", err)
 				}
 			}()
 		}
 	}
 
-	log.Printf("QManager Go Backend listening on HTTP port %s\n", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+	// Channel to listen for OS signals (SIGINT, SIGTERM)
+	stopChan := make(chan os.Signal, 1)
+	signal.Notify(stopChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		log.Printf("QManager Go Backend listening on HTTP port %s\n", port)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed to start: %v", err)
+		}
+	}()
+
+	// Block until signal is received
+	sig := <-stopChan
+	log.Printf("[System] Received OS signal: %v. Initiating graceful shutdown...", sig)
+
+	// Create a deadline context for shutdown (5 seconds max)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Stop background daemons
+	watchdog.Stop()
+
+	// Shutdown HTTPS server if running
+	if tlsServer != nil {
+		if err := tlsServer.Shutdown(ctx); err != nil {
+			log.Printf("[TLS] Warning: HTTPS shutdown error: %v", err)
+		}
 	}
+
+	// Shutdown HTTP server
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Printf("[HTTP] Warning: HTTP shutdown error: %v", err)
+	}
+
+	log.Println("[System] QManager Go Core Daemon stopped cleanly.")
 }

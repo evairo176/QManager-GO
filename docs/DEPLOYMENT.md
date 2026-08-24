@@ -73,6 +73,10 @@ To deploy manually on systemd-based modem carriers or Linux hosts:
    Environment=PORT=80
    Environment=TLS_PORT=443
    Environment=TLS_ENABLED=true
+   StandardOutput=journal
+   StandardError=journal
+   LogRateLimitIntervalSec=30s
+   LogRateLimitBurst=50
 
    [Install]
    WantedBy=multi-user.target
