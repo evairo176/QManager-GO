@@ -15,7 +15,7 @@
 #   --uninstall             Run uninstall.sh instead of install.sh
 #   --tag <tag>             Use an explicit release tag (e.g., v0.1.14)
 #   --channel <ch>          Release channel: stable|prerelease|any (default: any)
-#   --repo <owner/repo>     Override GitHub repo (default: dr-dolomite/QManager)
+#   --repo <owner/repo>     Override GitHub repo (default: latifangren/QManager-GO)
 #   -h, --help              Show this help
 #
 # Environment overrides:
@@ -26,7 +26,7 @@
 
 set -e
 
-REPO="${QMANAGER_REPO:-dr-dolomite/QManager}"
+REPO="${QMANAGER_REPO:-latifangren/QManager-GO}"
 TAG="${QMANAGER_TAG:-}"
 CHANNEL="${QMANAGER_CHANNEL:-any}"
 ACTION="install"

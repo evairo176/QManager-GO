@@ -9,7 +9,7 @@ import type {
 // Default manifest URL. Maintainer can repoint without a firmware update by
 // passing a different `manifest_url` query/body param from the frontend.
 export const DEFAULT_MANIFEST_URL =
-  "https://raw.githubusercontent.com/dr-dolomite/QManager/development-home/language-packs/manifest.json";
+  "https://raw.githubusercontent.com/latifangren/QManager-GO/dev-go/docs/language-packs/manifest.json";
 
 export type ManifestParseResult =
   | { ok: true; manifest: RemoteManifest }

@@ -11,7 +11,7 @@
       "completeness": 0.998,
       "size_bytes": 49588,
       "sha256": "00c045fc05b59fbd0c65601232e132cf0e01093ad4a528ed08e9a88b61bcfac1",
-      "url": "https://github.com/dr-dolomite/QManager/releases/download/language-packs/qmanager-lang-id-2026.07.18.tar.gz",
+      "url": "https://github.com/latifangren/QManager-GO/releases/download/language-packs/qmanager-lang-id-2026.07.18.tar.gz",
       "contributors": [
         "@ikhsanh"
       ]
@@ -25,7 +25,7 @@
       "completeness": 0.998,
       "size_bytes": 53107,
       "sha256": "c772223bfa34536cbbf4966611bed52a90354fc96f96615d78ac28d6de7b61d2",
-      "url": "https://github.com/dr-dolomite/QManager/releases/download/language-packs/qmanager-lang-it-2026.07.18.tar.gz",
+      "url": "https://github.com/latifangren/QManager-GO/releases/download/language-packs/qmanager-lang-it-2026.07.18.tar.gz",
       "contributors": [
         "@fmase"
       ]
@@ -39,7 +39,7 @@
       "completeness": 0.998,
       "size_bytes": 51228,
       "sha256": "463bfe15470039d7c004c578ecc5456a4a4c31ec81c271cd41009e61d1cde690",
-      "url": "https://github.com/dr-dolomite/QManager/releases/download/language-packs/qmanager-lang-zh-TW-2026.07.18.tar.gz",
+      "url": "https://github.com/latifangren/QManager-GO/releases/download/language-packs/qmanager-lang-zh-TW-2026.07.18.tar.gz",
       "contributors": [
         "@po1son7"
       ]
