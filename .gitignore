@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+*.out
+coverage.out
 
 # next.js static export outputs
 /.next/
