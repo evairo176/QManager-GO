@@ -1,6 +1,6 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-08-24T16:44:26Z",
+  "generated_at": "2026-08-24T16:44:37Z",
   "packs": [
     {
       "code": "id",
@@ -35,11 +35,11 @@
       "native_name": "繁體中文",
       "english_name": "Traditional Chinese",
       "rtl": false,
-      "version": "2026.07.18",
+      "version": "2026.08.24",
       "completeness": 0.998,
-      "size_bytes": 51228,
-      "sha256": "463bfe15470039d7c004c578ecc5456a4a4c31ec81c271cd41009e61d1cde690",
-      "url": "https://github.com/latifangren/QManager-GO/releases/download/language-packs/qmanager-lang-zh-TW-2026.07.18.tar.gz",
+      "size_bytes": 51141,
+      "sha256": "ac3b2597d6415ea099918bb1ed9067a9d9b8baecfe5403803f8af2170e11577b",
+      "url": "https://github.com/latifangren/QManager-GO/releases/download/language-packs/qmanager-lang-zh-TW-2026.08.24.tar.gz",
       "contributors": [
         "@po1son7"
       ]
