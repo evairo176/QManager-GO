@@ -4,8 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { SimCardIcon } from "@/components/icons/sim-card-icon";
-import { RefreshCw, ArrowRightLeft, CreditCard } from "lucide-react";
+import { RefreshCw, ArrowRightLeft, CreditCard, Cpu } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 import { toast } from "sonner";
 
@@ -98,7 +97,7 @@ export function SIMSlotCard() {
           >
             <div className="flex items-center justify-between">
               <span className="font-semibold text-sm flex items-center gap-2">
-                <SimCardIcon className="size-4 text-primary" />
+                <Cpu className="size-4 text-primary" />
                 SIM Slot 1
               </span>
               {info?.active_slot === 1 && (
@@ -134,7 +133,7 @@ export function SIMSlotCard() {
           >
             <div className="flex items-center justify-between">
               <span className="font-semibold text-sm flex items-center gap-2">
-                <SimCardIcon className="size-4 text-primary" />
+                <Cpu className="size-4 text-primary" />
                 SIM Slot 2 / eSIM
               </span>
               {info?.active_slot === 2 && (
