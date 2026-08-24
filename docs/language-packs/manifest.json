@@ -1,6 +1,6 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-08-24T16:44:15Z",
+  "generated_at": "2026-08-24T16:44:26Z",
   "packs": [
     {
       "code": "id",
@@ -21,11 +21,11 @@
       "native_name": "Italiano",
       "english_name": "Italian",
       "rtl": false,
-      "version": "2026.07.18",
+      "version": "2026.08.24",
       "completeness": 0.998,
-      "size_bytes": 53107,
-      "sha256": "c772223bfa34536cbbf4966611bed52a90354fc96f96615d78ac28d6de7b61d2",
-      "url": "https://github.com/latifangren/QManager-GO/releases/download/language-packs/qmanager-lang-it-2026.07.18.tar.gz",
+      "size_bytes": 53055,
+      "sha256": "de4e086de7e4ccf45590e7dae38daba68396bd2f4e3910acdd693cee604efbab",
+      "url": "https://github.com/latifangren/QManager-GO/releases/download/language-packs/qmanager-lang-it-2026.08.24.tar.gz",
       "contributors": [
         "@fmase"
       ]
