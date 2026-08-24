@@ -32,7 +32,7 @@ QManager Go Edition menggantikan `lighttpd`, script CGI Bash lama, dan eksekusi 
 
 ---
 
-## 🚀 Panduan Ringkas Pemasangan & Kompilasi (Quick Start)
+## 🚀 Panduan Lengkap Pemasangan & Konfigurasi Service
 
 ### 1. Pemasangan 1-Klik dari Workstation (Rekomendasi)
 
@@ -75,33 +75,90 @@ Jika ingin mengompilasi biner Go sendiri:
 ./build-go.sh
 ```
 
-**Hasil Kompilasi:**
-* `backend/dist/qmanager-core-armv7` (Modem Quectel RM520N / ARM 32-bit)
-* `backend/dist/qmanager-core-arm64` (Raspberry Pi 4/5, Router ARM64)
-* `backend/dist/qmanager-core-amd64` (PC / X86_64 Router / VM)
-* `backend/dist/qmanager-core` (Default alias ARMv7)
+**Hasil Kompilasi (`backend/dist/`):**
+* `qmanager-core-armv7` (Modem Quectel RM520N / ARM 32-bit)
+* `qmanager-core-arm64` (Raspberry Pi 4/5, Router ARM64)
+* `qmanager-core-amd64` (PC / X86_64 Router / VM)
+* `qmanager-core` (Default alias ARMv7)
 
 ---
 
-### 3. Pemasangan Manual di Perangkat (Systemd Service)
+### 3. Pemasangan & Konfigurasi Systemd Service (Langkah Demi Langkah)
 
-Jika ingin meng-copy biner hasil kompilasi secara manual ke modem:
+Jika ingin mengonfigurasi dan mengaktifkan service secara manual pada sistem berbasis `systemd` (seperti Ubuntu, Debian, atau modem firmware berbasis systemd):
 
-1. Salin biner `qmanager-core` ke `/usr/bin/` di modem:
-   ```bash
-   scp backend/dist/qmanager-core root@192.168.225.1:/usr/bin/qmanager-core
-   ssh root@192.168.225.1 "chmod +x /usr/bin/qmanager-core"
-   ```
+#### Langkah A: Salin Executable Biner
+```bash
+scp backend/dist/qmanager-core root@192.168.225.1:/usr/bin/qmanager-core
+ssh root@192.168.225.1 "chmod +x /usr/bin/qmanager-core"
+```
 
-2. Salin dan aktifkan service systemd:
-   ```bash
-   scp backend/qmanager-core.service root@192.168.225.1:/lib/systemd/system/qmanager-core.service
-   ssh root@192.168.225.1 "systemctl daemon-reload && systemctl enable qmanager-core && systemctl restart qmanager-core"
-   ```
+#### Langkah B: Buat File Service `/lib/systemd/system/qmanager-core.service`
+Buat file service di modem/device dengan isi berikut:
 
-3. Akses Web UI QManager:
-   - **HTTP**: `http://192.168.225.1`
-   - **HTTPS (Auto TLS)**: `https://192.168.225.1`
+```ini
+[Unit]
+Description=QManager Go Core Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/qmanager-core
+Restart=always
+RestartSec=5
+Environment=PORT=80
+Environment=TLS_PORT=443
+Environment=TLS_ENABLED=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### Langkah C: Aktifkan & Jalankan Service
+```bash
+ssh root@192.168.225.1 "systemctl daemon-reload && systemctl enable qmanager-core && systemctl start qmanager-core"
+```
+
+#### Langkah D: Perintah Operasional Systemd Useful Commands
+```bash
+# Cek status service
+systemctl status qmanager-core
+
+# Restart service
+systemctl restart qmanager-core
+
+# Hentikan service
+systemctl stop qmanager-core
+
+# Lihat log real-time
+journalctl -u qmanager-core -f
+```
+
+---
+
+### 4. Parameter Environment Variables (Konfigurasi Port & TLS)
+
+Kamu bisa mengubah perilaku `qmanager-core` melalui Environment Variables pada file service atau terminal:
+
+| Variable | Default Value | Keterangan |
+| :--- | :--- | :--- |
+| `PORT` | `80` | Port untuk listener HTTP server |
+| `TLS_PORT` | `443` | Port untuk listener HTTPS server (Auto TLS) |
+| `TLS_ENABLED` | `true` | Set ke `false` jika ingin mematikan auto HTTPS cert |
+| `WEB_ROOT` | *(Embedded)* | Opsional: lokasi folder static web jika tidak pakai `embed.FS` |
+| `AT_DEVICE` | `/dev/smd11` | Custom path serial device port AT modem |
+
+---
+
+### 5. Pemasangan pada OpenWRT Procd (`/etc/init.d/qmanager`)
+
+Jika perangkatmu menggunakan OpenWRT standar tanpa systemd (menggunakan `procd` init.d):
+
+```bash
+# Salin script init.d bawaan
+scp scripts/etc/init.d/qmanager root@192.168.225.1:/etc/init.d/qmanager
+ssh root@192.168.225.1 "chmod +x /etc/init.d/qmanager && /etc/init.d/qmanager enable && /etc/init.d/qmanager start"
+```
 
 ---
 

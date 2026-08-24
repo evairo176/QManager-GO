@@ -6,7 +6,7 @@
   <p>Visualize, configure, and optimize Quectel & Universal cellular modems with an ultra-lightweight Go backend and React 19 UI</p>
 
   ![Version](https://img.shields.io/badge/version-v0.2.0--go-blue?style=flat-square)
-  ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?style=flat-square)
+  ![Go](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square)
   ![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square)
   ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square)
   ![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-green?style=flat-square)
@@ -52,61 +52,9 @@ QManager Go Edition replaces legacy `lighttpd`, CGI Bash scripts, and heavy proc
 
 ---
 
-## 🛠️ Comprehensive Feature Suite
+## 📦 1-Click Modem Deployment (Recommended)
 
-### 📡 Signal & Antenna Monitoring
-- **Live Signal Dashboard** — Real-time RSRP, RSRQ, SINR, RSSI with per-antenna 4x4 MIMO values (Main/PRX, Diversity/DRX, MIMO 3/RX2, MIMO 4/RX3).
-- **Antenna Statistics** — Detailed signal breakdown per antenna port with visual quality metrics.
-- **Antenna Alignment Tool** — 3-position recording console comparing composite signal scores to find optimal physical antenna placement.
-- **Carrier Aggregation (CA)** — Active CA component list (`AT+QCAINFO`) displaying band, bandwidth, and SCC state.
-- **Historical Signal & Latency Charts** — 30-minute signal history and 24-hour ping latency/jitter/loss stored in NDJSON.
-- **Traffic Engine** — Real-time throughput (Mbps) and cumulative usage from `/proc/net/dev`.
-
-### 🔒 Cellular & Tower Locking
-- **Band Locking** — Select and lock specific LTE and 5G NR bands (`AT+QNWPREFCFG`) with automatic failover recovery.
-- **Tower Locking** — Lock to specific cell towers by PCI (`AT+QNWLOCK`) for 4G LTE and 5G NR SA.
-- **5G NR SCS Support** — Automatic inference and parsing of Subcarrier Spacing (SCS: 15, 30, 60, 120 kHz) from `AT+QSCAN` for valid 5G NR cell locks.
-- **Frequency Channel Locking** — Lock to exact EARFCN (LTE) and ARFCN (5G NR) channels.
-- **APN PDP Management** — Manage PDP contexts, auth types, MNO presets, and MBN profiles.
-- **IMEI Settings** — Query, backup, and configure device IMEI (`AT+EGMR`).
-
-### ⚙️ SIM Profiles & Automation
-- **Custom SIM Profiles** — Create per-operator profiles that auto-apply upon SIM swap based on ICCID matching.
-- **Connection Scenarios & Schedule** — Time-based schedule ribbon for band switching and tower locks.
-
-### 🛡️ 24/7 Resilience & System Monitoring
-- **Connection Watchdog** — 4-tier auto-recovery ladder (Ping target → Interface reset → CFUN cycle → Full reboot).
-- **SMS Center** — Storage-aware inbox (ME/SM merged), SMS sending, bulk deletion, and **SMS Webhook Forwarding**.
-- **Integrated Tailscale VPN** — Status monitoring and remote access management.
-- **System Health Checks** — Automated diagnostic suite checking services, udev permissions, filesystem mounts, and AT channel responsiveness.
-
----
-
-## 🛠️ Building QManager Go Edition
-
-To build the complete single-executable binary (`qmanager-core`) containing the embedded Next.js frontend:
-
-```sh
-# Clone the repository
-git clone https://github.com/latifangren/QManager-GO.git
-cd QManager-GO
-
-# Run the unified build pipeline
-./build-go.sh
-```
-
-### What `build-go.sh` Does:
-1. Installs frontend dependencies and exports Next.js static files (`out/`).
-2. Copies static web assets into `backend/web/out/`.
-3. Cross-compiles `qmanager-core` for Linux ARMv7 (`CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7`).
-
-**Output Executable:** `backend/dist/qmanager-core` (~14 MB standalone).
-
----
-
-## 📦 1-Click Modem Deployment
-
-Deploy `qmanager-core` and its systemd service directly from your workstation to your modem:
+Deploy `qmanager-core` and its systemd service directly from your workstation to your modem in one step:
 
 ### From Linux / macOS / Git Bash:
 ```sh
@@ -128,25 +76,103 @@ Deploy `qmanager-core` and its systemd service directly from your workstation to
 
 ---
 
-## 📋 Manual Systemd Deployment on Device
+## 🛠️ Building QManager Go Edition
 
-If you prefer to deploy manually onto the modem/SBC:
+To build the complete single-executable binary (`qmanager-core`) containing the embedded Next.js frontend:
 
-1. Copy `qmanager-core` to `/usr/bin/qmanager-core` on the device:
-   ```sh
-   scp backend/dist/qmanager-core root@192.168.225.1:/usr/bin/qmanager-core
-   ssh root@192.168.225.1 "chmod +x /usr/bin/qmanager-core"
-   ```
+```sh
+# Clone the repository
+git clone https://github.com/latifangren/QManager-GO.git
+cd QManager-GO
 
-2. Install systemd service unit:
-   ```sh
-   scp backend/qmanager-core.service root@192.168.225.1:/lib/systemd/system/qmanager-core.service
-   ssh root@192.168.225.1 "systemctl daemon-reload && systemctl enable qmanager-core && systemctl start qmanager-core"
-   ```
+# Run the unified multi-architecture build script
+./build-go.sh
+```
 
-3. Access QManager Web UI:
-   - **HTTP**: `http://192.168.225.1`
-   - **HTTPS (Auto TLS)**: `https://192.168.225.1`
+**Compiled Executables (`backend/dist/`):**
+* `qmanager-core-armv7` (Quectel RM520N / ARM 32-bit)
+* `qmanager-core-arm64` (Raspberry Pi 4/5, Router ARM64)
+* `qmanager-core-amd64` (PC / X86_64 Router / VM)
+* `qmanager-core` (Default alias ARMv7)
+
+---
+
+## 📋 Comprehensive Systemd & OpenWRT Service Setup
+
+If you prefer to configure and run the service manually on `systemd`-based Linux devices (Ubuntu, Debian, systemd-based modem carrier boards):
+
+### Step 1: Upload Binary Executable
+```sh
+scp backend/dist/qmanager-core root@192.168.225.1:/usr/bin/qmanager-core
+ssh root@192.168.225.1 "chmod +x /usr/bin/qmanager-core"
+```
+
+### Step 2: Create Systemd Unit File `/lib/systemd/system/qmanager-core.service`
+Create the systemd unit file on the target device with the following contents:
+
+```ini
+[Unit]
+Description=QManager Go Core Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/qmanager-core
+Restart=always
+RestartSec=5
+Environment=PORT=80
+Environment=TLS_PORT=443
+Environment=TLS_ENABLED=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Step 3: Enable & Start the Service
+```sh
+ssh root@192.168.225.1 "systemctl daemon-reload && systemctl enable qmanager-core && systemctl start qmanager-core"
+```
+
+### Step 4: Useful Operational Commands
+```sh
+# Check service status
+systemctl status qmanager-core
+
+# Restart service
+systemctl restart qmanager-core
+
+# Stop service
+systemctl stop qmanager-core
+
+# Stream live system logs
+journalctl -u qmanager-core -f
+```
+
+---
+
+## ⚙️ Environment Variables Reference
+
+Customize `qmanager-core` runtime behavior via environment variables in your systemd file or shell:
+
+| Environment Variable | Default Value | Description |
+| :--- | :--- | :--- |
+| `PORT` | `80` | HTTP server listening port |
+| `TLS_PORT` | `443` | HTTPS server listening port (Auto TLS) |
+| `TLS_ENABLED` | `true` | Set to `false` to disable auto-generated TLS certificates |
+| `WEB_ROOT` | *(Embedded)* | Optional filesystem path to static web assets if overriding `embed.FS` |
+| `AT_DEVICE` | `/dev/smd11` | Custom AT serial device path |
+
+---
+
+## 🛡️ OpenWRT Procd Init.d Alternative (`/etc/init.d/qmanager`)
+
+For standard OpenWRT devices running `procd` (without systemd):
+
+```sh
+# Install OpenWRT init script
+scp scripts/etc/init.d/qmanager root@192.168.225.1:/etc/init.d/qmanager
+ssh root@192.168.225.1 "chmod +x /etc/init.d/qmanager && /etc/init.d/qmanager enable && /etc/init.d/qmanager start"
+```
 
 ---
 
