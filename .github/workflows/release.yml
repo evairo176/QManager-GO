@@ -55,9 +55,19 @@ jobs:
           # Default armv7 alias for backward compatibility
           cp dist/qmanager-core-armv7 dist/qmanager-core
 
+      - name: Read Release Note Content
+        id: release_notes
+        run: |
+          if [ -f "docs/releases/RELEASE_NOTE.md" ]; then
+            echo "body<<EOF" >> $GITHUB_OUTPUT
+            cat docs/releases/RELEASE_NOTE.md >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          body: ${{ steps.release_notes.outputs.body }}
           files: |
             backend/dist/qmanager-core-armv7.tar.gz
             backend/dist/qmanager-core-arm64.tar.gz
@@ -65,6 +75,5 @@ jobs:
             backend/dist/qmanager-core
             deploy.sh
             deploy.ps1
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
