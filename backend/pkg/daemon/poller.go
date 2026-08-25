@@ -396,7 +396,7 @@ func (p *Poller) getSystemCpuUsage() int {
 	}
 
 	var user, nice, sys, idle, iowait, irq, softirq uint64
-	fmt.Sscanf(strings.Join(fields[1:], " "), "%d %d %d %d %d %d %d", &user, &nice, &sys, &idle, &iowait, &irq, &softirq)
+	_, _ = fmt.Sscanf(strings.Join(fields[1:], " "), "%d %d %d %d %d %d %d", &user, &nice, &sys, &idle, &iowait, &irq, &softirq)
 
 	totalSys := user + nice + sys + iowait + irq + softirq
 	totalIdle := idle
