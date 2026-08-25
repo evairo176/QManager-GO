@@ -159,7 +159,14 @@ func (p *Poller) pollOnce() {
 	cpuUsage := p.getSystemCpuUsage()
 	memUsedMb, memTotalMb := getSystemMemoryMb()
 	uptimeSec := getSystemUptimeSec()
-	temp := getSystemTemperature()
+
+	var temp *int
+	if resp, err := p.atClient.Exec("AT+QTEMP"); err == nil && !strings.Contains(resp, "ERROR") {
+		temp = parseQTEMPResponse(resp)
+	}
+	if temp == nil {
+		temp = getSystemTemperature()
+	}
 
 	status := map[string]interface{}{
 		"timestamp":            now,
@@ -480,6 +487,74 @@ func getSystemTemperature() *int {
 
 	defaultTemp := 42
 	return &defaultTemp
+}
+
+func parseQTEMPResponse(resp string) *int {
+	if strings.Contains(resp, "ERROR") || !strings.Contains(resp, "+QTEMP:") {
+		return nil
+	}
+
+	preferredSensors := []string{
+		"mdm-core-usr", "mdm-core", "soc-thermal", "qdsp6-thermal",
+		"cpu-thermal", "modem-thermal", "xo-thermal", "pa-thermal",
+	}
+
+	sensorMap := make(map[string]int)
+	var rawNumbers []int
+
+	lines := strings.Split(resp, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "+QTEMP:") {
+			valStr := strings.TrimPrefix(line, "+QTEMP:")
+			valStr = strings.TrimSpace(valStr)
+
+			parts := strings.Split(valStr, ",")
+			if len(parts) >= 2 {
+				sName := strings.ToLower(strings.Trim(strings.TrimSpace(parts[0]), `"`))
+				sValStr := strings.Trim(strings.TrimSpace(parts[1]), `"`)
+				if tVal, err := strconv.Atoi(sValStr); err == nil && tVal > -40 && tVal < 125 {
+					sensorMap[sName] = tVal
+				}
+			} else if len(parts) == 1 {
+				sValStr := strings.Trim(strings.TrimSpace(parts[0]), `"`)
+				if tVal, err := strconv.Atoi(sValStr); err == nil && tVal > -40 && tVal < 125 {
+					rawNumbers = append(rawNumbers, tVal)
+				}
+			}
+			if len(parts) > 2 {
+				for _, p := range parts {
+					cleanP := strings.Trim(strings.TrimSpace(p), `"`)
+					if tVal, err := strconv.Atoi(cleanP); err == nil && tVal > -40 && tVal < 125 {
+						rawNumbers = append(rawNumbers, tVal)
+					}
+				}
+			}
+		}
+	}
+
+	for _, pref := range preferredSensors {
+		for sName, val := range sensorMap {
+			if strings.Contains(sName, pref) {
+				return &val
+			}
+		}
+	}
+
+	for _, val := range sensorMap {
+		return &val
+	}
+
+	if len(rawNumbers) > 0 {
+		sum := 0
+		for _, n := range rawNumbers {
+			sum += n
+		}
+		avg := sum / len(rawNumbers)
+		return &avg
+	}
+
+	return nil
 }
 
 func cleanModelName(val string) string {
