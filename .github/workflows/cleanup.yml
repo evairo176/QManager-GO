@@ -27,23 +27,25 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Cleanup workflow runs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           KEEP: ${{ inputs.keep_runs }}
           DRY: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
 
           echo "=== Membersihkan Workflow Runs ==="
+          echo "Repository: $GH_REPO"
           echo "Menyimpan $KEEP run terakhir"
           echo "Dry-run: $DRY"
           echo ""
 
-          # Mengambil list databaseId run terurut dari terbaru
           ALL_RUNS=$(gh run list --limit 500 --json databaseId -q '.[].databaseId')
-          
-          # Lewati sebanyak $KEEP, sisanya masukkan ke target hapus
           TO_DELETE=$(echo "$ALL_RUNS" | tail -n +$((KEEP + 1)))
 
           if [ -z "$TO_DELETE" ]; then
@@ -63,6 +65,7 @@ jobs:
         if: ${{ inputs.keep_caches != '0' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           KEEP_CACHES: ${{ inputs.keep_caches }}
           DRY: ${{ inputs.dry_run }}
         run: |
@@ -73,10 +76,7 @@ jobs:
           echo "Dry-run: $DRY"
           echo ""
 
-          # Mengambil list id cache terurut dari terbaru
           ALL_CACHES=$(gh cache list --limit 100 --json id -q '.[].id')
-          
-          # Lewati sebanyak $KEEP_CACHES, sisanya masukkan ke target hapus
           TO_DELETE_CACHE=$(echo "$ALL_CACHES" | tail -n +$((KEEP_CACHES + 1)))
 
           if [ -z "$TO_DELETE_CACHE" ]; then
