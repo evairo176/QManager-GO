@@ -32,6 +32,13 @@ func ServeEmbeddedWeb() http.Handler {
 	fileServer := http.FileServer(http.FS(subFS))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/cgi-bin/quecmanager/") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"success":false,"error":"endpoint_not_found"}`))
+			return
+		}
+
 		urlPath := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 		if urlPath == "" || urlPath == "." {
 			fileServer.ServeHTTP(w, r)
