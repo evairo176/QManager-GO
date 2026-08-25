@@ -5,7 +5,7 @@
   <h3>Universal, High-Performance Go-Powered GUI & Core for Cellular Modem Management</h3>
   <p>Visualize, configure, and optimize Quectel & Universal cellular modems with an ultra-lightweight Go backend and React 19 UI</p>
 
-  ![Version](https://img.shields.io/badge/version-v0.2.2--go-blue?style=flat-square)
+  ![Version](https://img.shields.io/badge/version-v0.2.3--go-blue?style=flat-square)
   ![Go](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square)
   ![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square)
   ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square)

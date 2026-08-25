@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [v0.2.3-go] - 2026-08-25
+
+### 🚀 Added & Enhanced
+- **AT Serial Port Auto-Discovery** (`pkg/at/client.go`): Dynamic auto-scan of candidate serial ports (`/dev/smd11` → `/dev/smd7` → `/dev/ttyUSB2` → `/dev/ttyUSB3` → `/dev/ttyUSB0` → `/dev/ttyACM0` → `/dev/cdc-wdm0`) for non-SoC modem host routers.
+- **Smart 1-Click Deployment Tooling** (`deploy.sh`, `deploy.ps1`): Automatic target CPU architecture detection (`uname -m`) and init system auto-detection (`systemd` vs `procd init.d`).
+- **OpenWRT Procd Init Script** (`scripts/etc/init.d/qmanager-core`): Added native OpenWRT init.d service script for Go single-binary execution on OpenWRT devices without Systemd.
+- **Comprehensive Hardware Support Matrix** (`docs/HARDWARE-SUPPORT.md`): Detailed documentation covering Qualcomm chipset platforms (SDX55/62/65 vs SDX72/75), ARMv7 32-bit vs ARMv8/ARM64 64-bit parity, and On-Modem vs Host Router deployment modes.
+
 ## [v0.2.2-go] - 2026-08-24
 
 ### 🚀 Added & Enhanced

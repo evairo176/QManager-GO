@@ -1,22 +1,13 @@
-# 🚀 QManager Go Edition v0.2.2-go
+# 🚀 QManager Go Edition v0.2.3-go
 
-QManager Go Edition v0.2.2-go brings 5 core enterprise Go backend engines, real-time Server-Sent Events (SSE) telemetry streaming, built-in Speedtest, native nftables DPI packet inspection, Dual-SIM slot switching, AES-256-GCM encrypted backup/restore, and optimized CI automation.
+QManager Go Edition v0.2.3-go introduces AT serial port auto-discovery, dynamic CPU architecture and init system detection (`systemd` vs `procd init.d`) in deployment tools, native OpenWRT init.d service support, and a comprehensive Hardware & Device Support matrix.
 
-## ✨ New Features
+## ✨ New Features & Enhancements
 
-- **Real-Time Telemetry via Server-Sent Events (SSE)**: High-performance push stream (`/cgi-bin/quecmanager/api/stream/status`) replacing 1s HTTP polling with zero subshell overhead.
-- **Built-In Speedtest Engine**: Native Go multi-threaded HTTP latency, download, and upload throughput test suite (`/cgi-bin/quecmanager/network/speedtest.sh`) with interactive UI card (`speedtest-card.tsx`).
-- **Native nftables & DPI Rules Manager**: Native rule generator for `/etc/nftables.d/12-mangle-qmanager-dpi.nft` supporting NFQUEUE 200 packet inspection and TTL mangle modification.
-- **Dual-SIM & eSIM Manager**: Hardware SIM slot query (`AT+QUIMSLOT?`), slot switching (`AT+QUIMSLOT=1/2`), ICCID parser (`AT+QCCID`), and interactive switcher widget (`sim-slot-card.tsx`).
-- **AES-256-GCM Encrypted Backup & Restore**: Password-protected authenticated encryption for `.qmbackup` configuration archives using PBKDF2 (SHA-256).
-- **In-Memory Rate Limiter**: IP-based token bucket rate limiter middleware protecting login brute-force and serial AT command flooding.
-- **Native Watchdog Goroutine**: Non-blocking TCP/HTTP connectivity probe goroutine updating watchdog status cleanly.
-- **OpenWRT UCI Native Parser**: Zero-dependency thread-safe OpenWRT `/etc/config/*` parser and serializer.
-
-## ✅ Improvements
-
-- **CI Caching & Performance**: Next.js `.next/cache` restoration, Bun store caching, and concurrency control reducing CI run times by ~60%.
-- **Upstream Release & Language Pack Routing**: Repointed all OTA update daemons, bootstrap installer (`qmanager-installer.sh`), and i18n language pack manifests to `latifangren/QManager-GO`.
+- **AT Serial Port Auto-Discovery**: Dynamic auto-scan of candidate serial ports (`/dev/smd11` → `/dev/smd7` → `/dev/ttyUSB2` → `/dev/ttyUSB3` → `/dev/ttyUSB0` → `/dev/ttyACM0` → `/dev/cdc-wdm0`), making QManager Go zero-config on both internal modems and host routers.
+- **Smart 1-Click Deployment Tooling**: `deploy.sh` and `deploy.ps1` now auto-detect target CPU architecture (`uname -m`) and init system (`systemd` vs OpenWRT `init.d`), pushing the exact matching binary and service script.
+- **OpenWRT Procd Init Script**: Added `/etc/init.d/qmanager-core` for running `qmanager-core` seamlessly on OpenWRT devices without Systemd.
+- **Hardware & Device Support Guide**: Created [`docs/HARDWARE-SUPPORT.md`](docs/HARDWARE-SUPPORT.md) detailing modem chipset compatibility (SDX55/62/65 vs SDX72/75), ARMv7 32-bit vs ARMv8/ARM64 64-bit parity, and On-Modem vs Host Router deployment modes.
 
 ## 📥 Installation
 
