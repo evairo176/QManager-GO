@@ -21,8 +21,8 @@ func NewServer(atClient at.Executor) *Server {
 
 // RegisterRoutes registers all QManager API routes
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
-	loginLimiter := NewIPRateLimiter(0.1, 5)     // 5 attempts burst, 1 refill per 10s
-	atCmdLimiter := NewIPRateLimiter(10.0, 20)    // 10 req/s, burst 20
+	loginLimiter := NewIPRateLimiter(0.1, 5)   // 5 attempts burst, 1 refill per 10s
+	atCmdLimiter := NewIPRateLimiter(10.0, 20) // 10 req/s, burst 20
 
 	// Auth Routes
 	mux.HandleFunc("/cgi-bin/quecmanager/auth/login.sh", RateLimitMiddleware(loginLimiter, s.HandleAuthLogin))
@@ -77,24 +77,24 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/cgi-bin/quecmanager/system/health-check/run.sh", s.HandleHealthCheckRun)
 	mux.HandleFunc("/cgi-bin/quecmanager/system/language-packs/list.sh", s.HandleLanguagePacksList)
 	mux.HandleFunc("/cgi-bin/quecmanager/system/language-packs/install.sh", s.HandleLanguagePacksInstall)
-		// Device & System Metadata Routes
-		mux.HandleFunc("/cgi-bin/quecmanager/device/about.sh", s.HandleAboutDevice)
-		mux.HandleFunc("/cgi-bin/quecmanager/system/settings.sh", s.HandleSystemSettings)
-		mux.HandleFunc("/cgi-bin/quecmanager/cellular/sim_slot.sh", s.HandleSIMSlot)
-		
-		mux.HandleFunc("/cgi-bin/quecmanager/public/hostname.sh", s.HandleHostname)
+	// Device & System Metadata Routes
+	mux.HandleFunc("/cgi-bin/quecmanager/device/about.sh", s.HandleAboutDevice)
+	mux.HandleFunc("/cgi-bin/quecmanager/system/settings.sh", s.HandleSystemSettings)
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/sim_slot.sh", s.HandleSIMSlot)
 
-		// Network & Traffic Control Routes
-		mux.HandleFunc("/cgi-bin/quecmanager/network/lan_config.sh", s.HandleLANConfig)
-		mux.HandleFunc("/cgi-bin/quecmanager/network/lan_devices.sh", s.HandleLANDevices)
-		mux.HandleFunc("/cgi-bin/quecmanager/network/dns.sh", s.HandleDNS)
-		mux.HandleFunc("/cgi-bin/quecmanager/network/video_optimizer.sh", s.HandleVideoOptimizer)
+	mux.HandleFunc("/cgi-bin/quecmanager/public/hostname.sh", s.HandleHostname)
 
-		// System Management & Update Routes
-		mux.HandleFunc("/cgi-bin/quecmanager/system/ssh_password.sh", s.HandleSSHPassword)
-		mux.HandleFunc("/cgi-bin/quecmanager/system/update.sh", s.HandleSoftwareUpdate)
-		mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/cell_scan_start.sh", s.HandleCellScanStart)
-		mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/neighbour_scan_start.sh", s.HandleCellScanStart)
+	// Network & Traffic Control Routes
+	mux.HandleFunc("/cgi-bin/quecmanager/network/lan_config.sh", s.HandleLANConfig)
+	mux.HandleFunc("/cgi-bin/quecmanager/network/lan_devices.sh", s.HandleLANDevices)
+	mux.HandleFunc("/cgi-bin/quecmanager/network/dns.sh", s.HandleDNS)
+	mux.HandleFunc("/cgi-bin/quecmanager/network/video_optimizer.sh", s.HandleVideoOptimizer)
+
+	// System Management & Update Routes
+	mux.HandleFunc("/cgi-bin/quecmanager/system/ssh_password.sh", s.HandleSSHPassword)
+	mux.HandleFunc("/cgi-bin/quecmanager/system/update.sh", s.HandleSoftwareUpdate)
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/cell_scan_start.sh", s.HandleCellScanStart)
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/neighbour_scan_start.sh", s.HandleCellScanStart)
 
 	// Real-Time Telemetry SSE Stream
 	mux.HandleFunc("/cgi-bin/quecmanager/api/stream/status", s.HandleSSEStream)
@@ -276,7 +276,7 @@ func (s *Server) HandleAboutDevice(w http.ResponseWriter, r *http.Request) {
 					manufacturer = m
 				}
 				if md, ok := dev["model"].(string); ok && md != "" {
-					model = md
+					model = cleanModelString(md)
 				}
 				if fw, ok := dev["firmware"].(string); ok && fw != "" {
 					firmware = fw
@@ -370,7 +370,6 @@ func (s *Server) HandleHostname(w http.ResponseWriter, r *http.Request) {
 		"hostname": hostname,
 	})
 }
-
 
 // HandleLANConfig manages LAN IP & DHCP configuration
 func (s *Server) HandleLANConfig(w http.ResponseWriter, r *http.Request) {
@@ -476,4 +475,13 @@ func (s *Server) HandleCellScanStart(w http.ResponseWriter, r *http.Request) {
 		"status":  "completed",
 		"cells":   []interface{}{},
 	})
+}
+
+func cleanModelString(val string) string {
+	val = strings.ReplaceAll(val, `"`, ``)
+	parts := strings.Split(val, ",")
+	if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
+		return strings.TrimSpace(parts[0])
+	}
+	return strings.TrimSpace(val)
 }

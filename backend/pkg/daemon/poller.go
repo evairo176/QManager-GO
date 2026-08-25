@@ -16,12 +16,12 @@ import (
 )
 
 type Poller struct {
-	atClient   at.Executor
-	interval   time.Duration
-	stopChan   chan struct{}
-	lastCpuSys uint64
+	atClient    at.Executor
+	interval    time.Duration
+	stopChan    chan struct{}
+	lastCpuSys  uint64
 	lastCpuIdle uint64
-	mu         sync.Mutex
+	mu          sync.Mutex
 }
 
 func NewPoller(atClient at.Executor, interval time.Duration) *Poller {
@@ -76,23 +76,30 @@ func (p *Poller) pollOnce() {
 		firmware = parseATIResponse(resp)
 	}
 
+	imei := ""
+
 	if resp, err := p.atClient.Exec("AT+CGMI"); err == nil && !strings.Contains(resp, "ERROR") {
 		modemReachable = true
 		if m := parseSingleLineParam(resp, "+CGMI:"); m != "" {
-			manufacturer = m
+			manufacturer = cleanModelName(m)
 		}
 	}
 
 	if resp, err := p.atClient.Exec("AT+GMM"); err == nil && !strings.Contains(resp, "ERROR") {
 		modemReachable = true
 		if m := parseSingleLineParam(resp, "+GMM:"); m != "" {
-			model = m
+			model = cleanModelName(m)
 		}
 	} else if resp, err := p.atClient.Exec("AT+CGMM"); err == nil && !strings.Contains(resp, "ERROR") {
 		modemReachable = true
 		if m := parseSingleLineParam(resp, "+CGMM:"); m != "" {
-			model = m
+			model = cleanModelName(m)
 		}
+	}
+
+	if resp, err := p.atClient.Exec("AT+CGSN"); err == nil && !strings.Contains(resp, "ERROR") {
+		modemReachable = true
+		imei = parseIMEIResponse(resp)
 	}
 
 	// Default Fallback Signals & Metrics
@@ -191,21 +198,21 @@ func (p *Poller) pollOnce() {
 			"sinr":  nrSinr,
 		},
 		"device": map[string]interface{}{
-			"poller_tier":        "active",
-			"temperature":        temp,
-			"cpu_usage":          cpuUsage,
-			"memory_used_mb":     memUsedMb,
-			"memory_total_mb":    memTotalMb,
-			"uptime_seconds":     uptimeSec,
-			"firmware":           firmware,
-			"manufacturer":       manufacturer,
-			"model":              model,
-			"imei":               "",
-			"iccid":              "",
-			"imsi":               "",
-			"phone_number":       "",
-			"lte_category":       "Cat-16",
-			"mimo":               "2x2",
+			"poller_tier":     "active",
+			"temperature":     temp,
+			"cpu_usage":       cpuUsage,
+			"memory_used_mb":  memUsedMb,
+			"memory_total_mb": memTotalMb,
+			"uptime_seconds":  uptimeSec,
+			"firmware":        firmware,
+			"manufacturer":    manufacturer,
+			"model":           model,
+			"imei":            imei,
+			"iccid":           "",
+			"imsi":            "",
+			"phone_number":    "",
+			"lte_category":    "Cat-16",
+			"mimo":            "2x2",
 		},
 		"connectivity": map[string]interface{}{
 			"online":             true,
@@ -473,4 +480,24 @@ func getSystemTemperature() *int {
 
 	defaultTemp := 42
 	return &defaultTemp
+}
+
+func cleanModelName(val string) string {
+	val = strings.ReplaceAll(val, `"`, ``)
+	parts := strings.Split(val, ",")
+	if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
+		return strings.TrimSpace(parts[0])
+	}
+	return strings.TrimSpace(val)
+}
+
+func parseIMEIResponse(resp string) string {
+	for _, line := range strings.Split(resp, "\n") {
+		line = strings.TrimSpace(line)
+		line = strings.Trim(line, `"`)
+		if len(line) >= 14 && len(line) <= 17 && !strings.HasPrefix(line, "AT") && !strings.HasPrefix(line, "OK") {
+			return line
+		}
+	}
+	return ""
 }
