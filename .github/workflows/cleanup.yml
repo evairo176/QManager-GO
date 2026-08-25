@@ -7,58 +7,54 @@ on:
         description: "Jumlah run terakhir yang disimpan"
         required: true
         default: "10"
+        type: string
       keep_caches:
         description: "Jumlah cache terakhir yang disimpan (0 = disable cache cleanup)"
         required: true
         default: "5"
+        type: string
       dry_run:
-        description: "Jika true, hanya tampilkan apa yang akan dihapus"
+        description: "Jika dicentang, hanya simulasi (uncheck untuk benar-benar menghapus)"
         required: true
-        default: "true"
+        default: true
+        type: boolean
 
 permissions:
   contents: read
-  actions: write   # diperlukan untuk menghapus runs & caches
+  actions: write
 
 jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup tools
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y jq
-
       - name: Cleanup workflow runs
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           KEEP: ${{ inputs.keep_runs }}
           DRY: ${{ inputs.dry_run }}
         run: |
-          echo "Listing workflow runs for $REPO..."
-          # ambil page pertama (per_page=100). Jika banyak run, tambahkan pagination loop.
-          runs_json=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/$REPO/actions/runs?per_page=100")
-          to_delete=$(echo "$runs_json" | jq -r --argjson keep $KEEP '
-            .workflow_runs
-            | sort_by(.created_at)      # oldest -> newest
-            | reverse                   # newest -> oldest
-            | to_entries
-            | .[] | select(.key >= ($keep)) | .value.id
-          ')
-          if [ -z "$to_delete" ]; then
-            echo "No workflow runs to delete (kept $KEEP)."
+          set -euo pipefail
+
+          echo "=== Membersihkan Workflow Runs ==="
+          echo "Menyimpan $KEEP run terakhir"
+          echo "Dry-run: $DRY"
+          echo ""
+
+          # Mengambil list databaseId run terurut dari terbaru
+          ALL_RUNS=$(gh run list --limit 500 --json databaseId -q '.[].databaseId')
+          
+          # Lewati sebanyak $KEEP, sisanya masukkan ke target hapus
+          TO_DELETE=$(echo "$ALL_RUNS" | tail -n +$((KEEP + 1)))
+
+          if [ -z "$TO_DELETE" ]; then
+            echo "Tidak ada runs yang perlu dihapus (total run <= $KEEP)."
           else
-            echo "Found runs to delete: "
-            echo "$to_delete"
-            for id in $to_delete; do
+            for id in $TO_DELETE; do
               if [ "$DRY" = "true" ]; then
-                echo "DRY RUN: would delete run id=$id"
+                echo "DRY RUN: akan menghapus run id=$id"
               else
-                echo "Deleting run id=$id"
-                curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
-                  "https://api.github.com/repos/$REPO/actions/runs/$id"
+                echo "Menghapus run id=$id"
+                gh run delete "$id" || echo "Gagal menghapus run id=$id"
               fi
             done
           fi
@@ -66,32 +62,32 @@ jobs:
       - name: Cleanup caches (optional)
         if: ${{ inputs.keep_caches != '0' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           KEEP_CACHES: ${{ inputs.keep_caches }}
           DRY: ${{ inputs.dry_run }}
         run: |
-          echo "Listing caches for $REPO..."
-          caches_json=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/$REPO/actions/caches?per_page=100")
-          # note: caches endpoint returns items with .id and .last_accessed_at (or created_at)
-          to_delete=$(echo "$caches_json" | jq -r --argjson keep $KEEP_CACHES '
-            .actions_caches
-            | sort_by(.last_accessed_at // .created_at)
-            | reverse
-            | to_entries
-            | .[] | select(.key >= ($keep)) | .value.id
-          ')
-          if [ -z "$to_delete" ]; then
-            echo "No caches to delete (kept $KEEP_CACHES)."
+          set -euo pipefail
+
+          echo "=== Membersihkan Caches ==="
+          echo "Menyimpan $KEEP_CACHES cache terakhir"
+          echo "Dry-run: $DRY"
+          echo ""
+
+          # Mengambil list id cache terurut dari terbaru
+          ALL_CACHES=$(gh cache list --limit 100 --json id -q '.[].id')
+          
+          # Lewati sebanyak $KEEP_CACHES, sisanya masukkan ke target hapus
+          TO_DELETE_CACHE=$(echo "$ALL_CACHES" | tail -n +$((KEEP_CACHES + 1)))
+
+          if [ -z "$TO_DELETE_CACHE" ]; then
+            echo "Tidak ada cache yang perlu dihapus (total cache <= $KEEP_CACHES)."
           else
-            for cid in $to_delete; do
+            for cid in $TO_DELETE_CACHE; do
               if [ "$DRY" = "true" ]; then
-                echo "DRY RUN: would delete cache id=$cid"
+                echo "DRY RUN: akan menghapus cache id=$cid"
               else
-                echo "Deleting cache id=$cid"
-                curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
-                  "https://api.github.com/repos/$REPO/actions/caches/$cid"
+                echo "Menghapus cache id=$cid"
+                gh cache delete "$cid" || echo "Gagal menghapus cache id=$cid"
               fi
             done
           fi
