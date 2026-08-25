@@ -5,7 +5,7 @@
   <h3>A modern, custom GUI for Quectel modem management</h3>
   <p>Visualize, configure, and optimize your cellular modem's performance with an intuitive web interface</p>
 
-  ![Version](https://img.shields.io/badge/version-v0.1.8-blue?style=flat-square)
+  ![Version](https://img.shields.io/badge/version-v0.2.2--go-blue?style=flat-square)
   ![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-green?style=flat-square)
   ![Platform](https://img.shields.io/badge/platform-OpenWRT-orange?style=flat-square)
   ![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square)
@@ -78,7 +78,7 @@ SSH into your OpenWRT device and run:
 
 ```sh
 set -e
-REPO="dr-dolomite/QManager"
+REPO="latifangren/QManager-GO"
 API="https://api.github.com/repos/${REPO}/releases?per_page=20"
 
 JSON=$(uclient-fetch -qO- "$API" 2>/dev/null || wget -qO- "$API" 2>/dev/null || curl -fsSL "$API")
@@ -102,7 +102,7 @@ sh /tmp/qmanager_install/install.sh
 One-liner convenience (same verified flow):
 
 ```sh
-curl -fsSL -o /tmp/qmanager-installer.sh https://raw.githubusercontent.com/dr-dolomite/QManager/development-home/qmanager-installer.sh && sh /tmp/qmanager-installer.sh
+curl -fsSL -o /tmp/qmanager-installer.sh https://raw.githubusercontent.com/latifangren/QManager-GO/dev-go/qmanager-installer.sh && sh /tmp/qmanager-installer.sh
 ```
 
 The one-liner wrapper still downloads the latest pre-release tarball, verifies `sha256sum.txt`, and then executes `install.sh`.
@@ -117,7 +117,7 @@ From v0.1.7+, go to **Monitoring → Software Update** and use the built-in upda
 
 ```sh
 set -e
-REPO="dr-dolomite/QManager"
+REPO="latifangren/QManager-GO"
 API="https://api.github.com/repos/${REPO}/releases?per_page=20"
 
 JSON=$(uclient-fetch -qO- "$API" 2>/dev/null || wget -qO- "$API" 2>/dev/null || curl -fsSL "$API")
@@ -139,7 +139,7 @@ sh /tmp/qmanager_install/uninstall.sh
 One-liner uninstall:
 
 ```sh
-curl -fsSL -o /tmp/qmanager-installer.sh https://raw.githubusercontent.com/dr-dolomite/QManager/development-home/qmanager-installer.sh && sh /tmp/qmanager-installer.sh --uninstall
+curl -fsSL -o /tmp/qmanager-installer.sh https://raw.githubusercontent.com/latifangren/QManager-GO/dev-go/qmanager-installer.sh && sh /tmp/qmanager-installer.sh --uninstall
 ```
 
 Use `QMANAGER_TAG="v0.1.14" sh /tmp/qmanager-installer.sh` to pin a specific version with the one-liner wrapper.

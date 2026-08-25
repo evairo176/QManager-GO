@@ -5,7 +5,7 @@
   <h3>Universal, High-Performance Go-Powered GUI & Core for Cellular Modem Management</h3>
   <p>Visualize, configure, and optimize Quectel & Universal cellular modems with an ultra-lightweight Go backend and React 19 UI</p>
 
-  ![Version](https://img.shields.io/badge/version-v0.2.1--go-blue?style=flat-square)
+  ![Version](https://img.shields.io/badge/version-v0.2.2--go-blue?style=flat-square)
   ![Go](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square)
   ![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square)
   ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square)
@@ -73,6 +73,19 @@ Deploy `qmanager-core` and its systemd service directly from your workstation to
 # Or deploy over ADB
 .\deploy.ps1 -Method "ADB"
 ```
+
+---
+
+## 📱 Supported Modem Hardware & Platforms
+
+`QManager Go Edition` is engineered to be 100% universal across all Quectel 4G/5G cellular modems and host environments:
+
+| Hardware Platform | Qualcomm Chipset | Operating System | Binary Executable | Target Modem Devices |
+| :--- | :--- | :--- | :--- | :--- |
+| **ARMv7 32-bit (SDX55 / SDX62 / SDX65)** | SDX55, SDX62, SDX65 | Linux + Systemd | `qmanager-core-armv7` | **Quectel RM520N-GL**, RM500Q-GL, RM502Q-AE, RM521F-GL |
+| **ARMv8 64-bit / ARM64 (SDX72 / SDX75)** | SDX72, SDX75 | Native OpenWRT (`init.d`) | `qmanager-core-arm64` / `armv7` | **Quectel RM551E-GL**, RM550E-GL, RG650V-EU |
+| **Host Router & Gateways (ARM64)** | Any (Passthrough) | OpenWRT / Linux | `qmanager-core-arm64` | Raspberry Pi 4/5, NanoPi, GL.iNet, FriendlyWrt |
+| **PC & Router Hardware (x86_64)** | Any (Passthrough) | Linux / OpenWRT x86 | `qmanager-core-amd64` | x86 Routers, Mini PCs, MikroTik CHR, Linux VMs |
 
 ---
 
