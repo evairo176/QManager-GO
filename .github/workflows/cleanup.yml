@@ -1,33 +1,97 @@
-name: Cleanup Workflow Runs & Cache
+name: "Cleanup old workflow runs & caches"
 
 on:
-  schedule:
-    - cron: '0 0 * * 0' # Every Sunday at midnight UTC
   workflow_dispatch:
+    inputs:
+      keep_runs:
+        description: "Jumlah run terakhir yang disimpan"
+        required: true
+        default: "10"
+      keep_caches:
+        description: "Jumlah cache terakhir yang disimpan (0 = disable cache cleanup)"
+        required: true
+        default: "5"
+      dry_run:
+        description: "Jika true, hanya tampilkan apa yang akan dihapus"
+        required: true
+        default: "true"
+
+permissions:
+  contents: read
+  actions: write   # diperlukan untuk menghapus runs & caches
 
 jobs:
   cleanup:
-    name: Purge Stale Runs & Cache
     runs-on: ubuntu-latest
-    permissions:
-      actions: write
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Delete Old Workflow Runs
-        uses: Mattraks/delete-workflow-runs@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          retain_days: 14
-          keep_minimum_runs: 3
-
-      - name: Purge Caches
+      - name: Setup tools
         run: |
-          gh extension install actions/gh-actions-cache || true
-          REPO="${{ github.repository }}"
-          echo "Clearing cache for $REPO"
-          gh actions-cache delete --confirm --repo "$REPO" || true
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+
+      - name: Cleanup workflow runs
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          KEEP: ${{ inputs.keep_runs }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          echo "Listing workflow runs for $REPO..."
+          # ambil page pertama (per_page=100). Jika banyak run, tambahkan pagination loop.
+          runs_json=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$REPO/actions/runs?per_page=100")
+          to_delete=$(echo "$runs_json" | jq -r --argjson keep $KEEP '
+            .workflow_runs
+            | sort_by(.created_at)      # oldest -> newest
+            | reverse                   # newest -> oldest
+            | to_entries
+            | .[] | select(.key >= ($keep)) | .value.id
+          ')
+          if [ -z "$to_delete" ]; then
+            echo "No workflow runs to delete (kept $KEEP)."
+          else
+            echo "Found runs to delete: "
+            echo "$to_delete"
+            for id in $to_delete; do
+              if [ "$DRY" = "true" ]; then
+                echo "DRY RUN: would delete run id=$id"
+              else
+                echo "Deleting run id=$id"
+                curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+                  "https://api.github.com/repos/$REPO/actions/runs/$id"
+              fi
+            done
+          fi
+
+      - name: Cleanup caches (optional)
+        if: ${{ inputs.keep_caches != '0' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          KEEP_CACHES: ${{ inputs.keep_caches }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          echo "Listing caches for $REPO..."
+          caches_json=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$REPO/actions/caches?per_page=100")
+          # note: caches endpoint returns items with .id and .last_accessed_at (or created_at)
+          to_delete=$(echo "$caches_json" | jq -r --argjson keep $KEEP_CACHES '
+            .actions_caches
+            | sort_by(.last_accessed_at // .created_at)
+            | reverse
+            | to_entries
+            | .[] | select(.key >= ($keep)) | .value.id
+          ')
+          if [ -z "$to_delete" ]; then
+            echo "No caches to delete (kept $KEEP_CACHES)."
+          else
+            for cid in $to_delete; do
+              if [ "$DRY" = "true" ]; then
+                echo "DRY RUN: would delete cache id=$cid"
+              else
+                echo "Deleting cache id=$cid"
+                curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+                  "https://api.github.com/repos/$REPO/actions/caches/$cid"
+              fi
+            done
+          fi
