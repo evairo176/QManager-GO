@@ -19,13 +19,42 @@ type Client struct {
 	timeout    time.Duration
 }
 
-// NewClient initializes a new AT command client
-func NewClient(devicePath string) *Client {
-	if devicePath == "" {
-		devicePath = "/dev/smd11"
+// detectATDevice scans candidate serial ports if default path does not exist
+func detectATDevice(initial string) string {
+	if initial != "" {
+		if _, err := os.Stat(initial); err == nil {
+			return initial
+		}
 	}
+
+	// Priority list for embedded modems and USB passthrough host ports
+	candidates := []string{
+		"/dev/smd11",       // Quectel internal SMD port (RM520N/RM500Q)
+		"/dev/smd7",        // Quectel alternate SMD port
+		"/dev/ttyUSB2",     // Quectel USB AT port
+		"/dev/ttyUSB3",     // Qualcomm USB AT port
+		"/dev/ttyUSB0",     // Standard USB serial
+		"/dev/ttyACM0",     // ModemManager / CDC-ACM port
+		"/dev/cdc-wdm0",    // QMI / MBIM control port
+	}
+
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	if initial != "" {
+		return initial
+	}
+	return "/dev/smd11"
+}
+
+// NewClient initializes a new AT command client with port auto-discovery
+func NewClient(devicePath string) *Client {
+	resolvedPath := detectATDevice(devicePath)
 	return &Client{
-		devicePath: devicePath,
+		devicePath: resolvedPath,
 		lockFile:   "/tmp/qmanager_at.lock",
 		timeout:    5 * time.Second,
 	}
@@ -42,13 +71,12 @@ func (c *Client) Exec(cmd string) (string, error) {
 		return "", fmt.Errorf("invalid AT command: %s", cmd)
 	}
 
-	// On Linux modem, try executing via qcmd or direct device IO
+	// On Linux modem/host, try executing via qcmd or direct device IO
 	if runtime.GOOS == "linux" {
 		resp, err := c.execOnModem(cmd)
 		if err == nil {
 			return resp, nil
 		}
-		// If on Linux CI / non-modem host, fallback to execMock
 	}
 
 	// Mock / Development fallback
@@ -65,15 +93,14 @@ func (c *Client) execOnModem(cmd string) (string, error) {
 		return strings.TrimSpace(string(out)), nil
 	}
 
+	// Dynamic re-check if port was plugged in post-launch
+	if _, err := os.Stat(c.devicePath); err != nil {
+		c.devicePath = detectATDevice(c.devicePath)
+	}
+
 	// Direct device check
 	if _, err := os.Stat(c.devicePath); err != nil {
 		return "", fmt.Errorf("AT device path %s does not exist: %w", c.devicePath, err)
-	}
-
-	// Fallback: direct device write with flock
-	lock, err := os.OpenFile(c.lockFile, os.O_CREATE|os.O_RDWR, 0666)
-	if err == nil {
-		defer lock.Close()
 	}
 
 	f, err := os.OpenFile(c.devicePath, os.O_RDWR, 0)
@@ -82,16 +109,21 @@ func (c *Client) execOnModem(cmd string) (string, error) {
 	}
 	defer f.Close()
 
-	if _, err := f.WriteString(cmd + "\r\n"); err != nil {
+	// Send AT command
+	if !strings.HasSuffix(cmd, "\r\n") {
+		cmd = cmd + "\r\n"
+	}
+	if _, err := f.WriteString(cmd); err != nil {
 		return "", fmt.Errorf("failed to write to AT device: %w", err)
 	}
 
-	buf := make([]byte, 4096)
+	// Read response buffer with timeout
+	buf := make([]byte, 1024)
 	var response bytes.Buffer
 	deadline := time.Now().Add(c.timeout)
 
 	for time.Now().Before(deadline) {
-		_ = f.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		_ = f.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
 		n, err := f.Read(buf)
 		if n > 0 {
 			response.Write(buf[:n])

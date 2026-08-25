@@ -12,6 +12,7 @@ QManager is a modern web-based GUI for managing Quectel cellular modems on OpenW
 
 | Document | Description |
 |----------|-------------|
+| [Hardware Support](HARDWARE-SUPPORT.md) | Device compatibility matrix, chipset platforms (ARMv7 vs ARMv8), init systems |
 | [Architecture](ARCHITECTURE.md) | System architecture, data flow, polling tiers, state management |
 | [Frontend Guide](FRONTEND.md) | React components, hooks, pages, routing, and UI patterns |
 | [Backend Guide](BACKEND.md) | Shell scripts, daemons, init.d services, shared libraries |
