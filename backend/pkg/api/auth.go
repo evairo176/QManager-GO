@@ -27,7 +27,7 @@ type LoginResponse struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// HandleAuthLogin handles POST login requests and issues session cookie
+// HandleAuthLogin handles POST login requests and issues session cookies
 func (s *Server) HandleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -60,6 +60,7 @@ func (s *Server) HandleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	globalSessions.sessions[token] = time.Now().Add(24 * time.Hour)
 	globalSessions.mu.Unlock()
 
+	// 1. Secure HTTP-only session cookie for backend auth verification
 	http.SetCookie(w, &http.Cookie{
 		Name:     "qmanager_session",
 		Value:    token,
@@ -68,12 +69,21 @@ func (s *Server) HandleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 	})
 
+	// 2. Client-accessible indicator cookie for Next.js AuthGate (document.cookie)
+	http.SetCookie(w, &http.Cookie{
+		Name:     "qm_logged_in",
+		Value:    "1",
+		Path:     "/",
+		Expires:  time.Now().Add(24 * time.Hour),
+		HttpOnly: false,
+	})
+
 	_ = json.NewEncoder(w).Encode(LoginResponse{
 		Success: true,
 	})
 }
 
-// HandleAuthLogout invalidates the session cookie
+// HandleAuthLogout invalidates the session cookies
 func (s *Server) HandleAuthLogout(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -92,6 +102,14 @@ func (s *Server) HandleAuthLogout(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 	})
 
+	http.SetCookie(w, &http.Cookie{
+		Name:     "qm_logged_in",
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		HttpOnly: false,
+	})
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 	})
@@ -103,6 +121,13 @@ func (s *Server) HandleAuthCheck(w http.ResponseWriter, r *http.Request) {
 
 	cookie, err := r.Cookie("qmanager_session")
 	if err != nil || cookie.Value == "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "qm_logged_in",
+			Value:    "",
+			Path:     "/",
+			Expires:  time.Unix(0, 0),
+			HttpOnly: false,
+		})
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"authenticated": false})
 		return
 	}
@@ -112,6 +137,13 @@ func (s *Server) HandleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	globalSessions.mu.Unlock()
 
 	if !exists || time.Now().After(expiry) {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "qm_logged_in",
+			Value:    "",
+			Path:     "/",
+			Expires:  time.Unix(0, 0),
+			HttpOnly: false,
+		})
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"authenticated": false})
 		return
 	}
