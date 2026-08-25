@@ -87,6 +87,13 @@ Deploy `qmanager-core` and its systemd service directly from your workstation to
 | **Host Router & Gateways (ARM64)** | Any (Passthrough) | OpenWRT / Linux | `qmanager-core-arm64` | Raspberry Pi 4/5, NanoPi, GL.iNet, FriendlyWrt |
 | **PC & Router Hardware (x86_64)** | Any (Passthrough) | Linux / OpenWRT x86 | `qmanager-core-amd64` | x86 Routers, Mini PCs, MikroTik CHR, Linux VMs |
 
+> ℹ️ **Hardware Compatibility & Feature Matrix Note**
+> - **Primary Native Architecture**: QManager Go Edition is natively designed to run **directly inside the internal SoC/Linux OS** of Quectel 4G/5G modems (RM520N, RG501, RM500Q, RM551E, etc.).
+> - **External Linux Host Support (USB Adapters / PC / RPi)**: The Go engine can also run on external Linux hosts connected to modems via USB adapters (e.g. Fibocom L850-GL, Sierra Wireless, Huawei).
+> - **Feature Availability Disclaimer**:
+>   - 🟢 **Universal (All Modems & Hosts)**: Basic Telemetry (`CSQ`/`CESQ`/`COPS`), Device Info (`CGSN` IMEI/Manufacturer/Model), Interactive AT Terminal, System Health, Custom DNS, and WebUI Dashboard.
+>   - ⚠️ **Quectel-Specific (Quectel RM/RG Modems Only)**: 5G NR/LTE Band Locking (`AT+QNWPREFCFG`), Cell Scanner (`AT+QSCAN`), MBN Profile Manager (`AT+QMBNCFG`), Tower Frequency Locking (`AT+QNWLOCK`), Dual-SIM Switching (`AT+QUIMSLOT`), and Hardware Temperature (`AT+QTEMP`). Modems without Quectel AT extension support will gracefully report standard 3GPP telemetry without crashing.
+
 ---
 
 ## 🛠️ Building QManager Go Edition
