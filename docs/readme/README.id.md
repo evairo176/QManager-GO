@@ -38,7 +38,7 @@ QManager Go Edition menggantikan `lighttpd`, script CGI Bash lama, dan eksekusi 
 
 | Platform Hardware | Chipset Qualcomm | Sistem Operasi | Biner Executable | Perangkat Modem Target |
 | :--- | :--- | :--- | :--- | :--- |
-| **ARMv7 32-bit (SDX55 / SDX62 / SDX65)** | SDX55, SDX62, SDX65 | Linux + Systemd | `qmanager-core-armv7` | **Quectel RM520N-GL**, RM500Q-GL, RM502Q-AE, RM521F-GL |
+| **ARMv7 32-bit (SDX55 / SDX62 / SDX65)** | SDX55, SDX62, SDX65 | Linux + Systemd | `qmanager-core-armv7` | **Quectel RM520N-GL**, RM500Q-GL, RM502Q-AE, **RG501Q-EU**, RM521F-GL |
 | **ARMv8 64-bit / ARM64 (SDX72 / SDX75)** | SDX72, SDX75 | Native OpenWRT (`init.d`) | `qmanager-core-arm64` / `armv7` | **Quectel RM551E-GL**, RM550E-GL, RG650V-EU |
 | **Host Router & Gateway (ARM64)** | Bebas (Passthrough) | OpenWRT / Linux | `qmanager-core-arm64` | Raspberry Pi 4/5, NanoPi, GL.iNet, FriendlyWrt |
 | **PC & Perangkat Router (x86_64)** | Bebas (Passthrough) | Linux / OpenWRT x86 | `qmanager-core-amd64` | Router x86, Mini PC, MikroTik CHR, VM Linux |

@@ -20,7 +20,7 @@ QManager Go Edition dibangun menggunakan bahasa **Go** yang dikompilasi menjadi 
 | Seri Modem / Device | Chipset Qualcomm | Platform Code | Arsitektur CPU | OS & Init System | Biner Binary Target | Lokasi Pemasangan |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Quectel RM520N-GL / AA** | Qualcomm SDX62 | `sdxlemur` | **ARMv7l** (32-bit) | Linux + Systemd | `qmanager-core-armv7` | Internal Modem Storage |
-| **Quectel RM500Q-GL / RM502Q** | Qualcomm SDX55 | `sdxprairie` | **ARMv7l** (32-bit) | Linux + Systemd | `qmanager-core-armv7` | Internal Modem Storage |
+| **Quectel RM500Q-GL / RM502Q / RG501Q-EU** | Qualcomm SDX55 | `sdxprairie` | **ARMv7l** (32-bit) | Linux + Systemd | `qmanager-core-armv7` | Internal Modem Storage |
 | **Quectel RM521F-GL / RM530N** | Qualcomm SDX65 | `sdxlemur` | **ARMv7l** (32-bit) | Linux + Systemd | `qmanager-core-armv7` | Internal Modem Storage |
 | **Quectel RM551E-GL / RM550E** | Qualcomm SDX75 | `sdxpinn` | **ARMv8 / ARM64** | OpenWRT (`init.d`) | `qmanager-core-arm64` | Internal Modem Storage |
 | **Quectel RG650V-EU / NA** | Qualcomm SDX75 | `sdxpinn` | **ARMv8 / ARM64** | OpenWRT (`init.d`) | `qmanager-core-arm64` | Internal Modem Storage |
