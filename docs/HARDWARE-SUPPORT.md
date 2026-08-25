@@ -64,3 +64,25 @@ Script installer bawaan `QManager-GO` sudah dilengkapi kecerdasan buatan untuk *
 # Atau via ADB
 .\deploy.ps1 -Method "ADB"
 ```
+
+---
+
+## 💡 Tips & Panduan Tingkat Lanjut (Modem & Carrier Hacks)
+
+### 1. Cross-Flashing Fibocom FM190W-GL ke Quectel RM551E-GL
+Modem Fibocom FM190W-GL yang menggunakan chipset Qualcomm SDX75 (`sdxpinn`) dapat di-cross-flash menjadi firmware Quectel RM551E-GL menggunakan software **QFlash** (memilih firehose `prog_firehose_sdx7x.elf`) dan **QPST Restore** (`.xqcn` file). Setelah di-cross-flash, modem ini dapat menjalankan `qmanager-core` (`arm64`) secara native dengan fitur lengkap Quectel.
+
+### 2. Konfigurasi Verizon Multi-PDP Context (`AT+QMAP`)
+Carrier Verizon memiliki spesifikasi jaringan khusus di mana PDP Context 1 digunakan untuk `IMS` (VoLTE/SMS) dan PDP Context 2 untuk `vzwadmin`. Untuk mengaktifkan sesi data pada PDP Context 3 (`VZWINTERNET`), gunakan perintah AT:
+```text
+AT+QMAP="mpdn_rule",0,3,0,0,1
+```
+*Catatan: QManager Go Edition secara otomatis mengelola penanganan profil SIM Verizon ini pada engine SIM Profile manager.*
+
+### 3. Patch 5G NR SA 4x Carrier Aggregation (4CA) T-Mobile
+Pada modem RM551E-GL / RM520N-GL, kombinasi 4xCA pada 5G Standalone (SA) dapat dioptimalkan dengan menuliskan NV items ke EFS modem melalui perintah AT:
+```text
+AT+QNVFW="/mdb/nr/plmn2cacombos_nr.mdb",010175516c616f636d6d000000000000000000000000000000000000020001015ab106bb002f00006a34519700000000001b0000002000009c786163606000e009e2408c014206c2248161060d3015000179113b17007800cb9c3233d47533cd7431920686e6d68e000c01281a04
+```
+Lakukan reboot (`AT+CFUN=1,1`) setelah penulisan NV item untuk mengaktifkan kombinasi agregasi 4xCA.
+
