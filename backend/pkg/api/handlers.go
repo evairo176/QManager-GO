@@ -39,6 +39,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Cellular & Network Settings Routes
 	mux.HandleFunc("/cgi-bin/quecmanager/cellular/settings.sh", s.HandleCellularSettings)
 	mux.HandleFunc("/cgi-bin/quecmanager/cellular/imei.sh", s.HandleIMEISettings)
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/network_priority.sh", s.HandleNetworkPriority)
 	mux.HandleFunc("/cgi-bin/quecmanager/network/ttl.sh", s.HandleTTLSettings)
 
 	// Advanced Features Routes
@@ -59,7 +60,11 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/cgi-bin/quecmanager/cellular/mbn.sh", s.HandleMBN)
 
 	// Tower & Frequency Locking Routes
+	mux.HandleFunc("/cgi-bin/quecmanager/tower/status.sh", s.HandleTowerStatus)
 	mux.HandleFunc("/cgi-bin/quecmanager/tower/lock.sh", s.HandleTowerLock)
+	mux.HandleFunc("/cgi-bin/quecmanager/tower/settings.sh", s.HandleTowerSettings)
+	mux.HandleFunc("/cgi-bin/quecmanager/tower/schedule.sh", s.HandleTowerSchedule)
+	mux.HandleFunc("/cgi-bin/quecmanager/frequency/status.sh", s.HandleFrequencyStatus)
 	mux.HandleFunc("/cgi-bin/quecmanager/frequency/lock.sh", s.HandleFrequencyLock)
 
 	// SIM Profiles & Connection Scenarios Routes
@@ -85,14 +90,34 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/cgi-bin/quecmanager/public/hostname.sh", s.HandleHostname)
 
 	// Network & Traffic Control Routes
+	mux.HandleFunc("/cgi-bin/quecmanager/network/ethernet.sh", s.HandleEthernetStatus)
 	mux.HandleFunc("/cgi-bin/quecmanager/network/lan_config.sh", s.HandleLANConfig)
 	mux.HandleFunc("/cgi-bin/quecmanager/network/lan_devices.sh", s.HandleLANDevices)
 	mux.HandleFunc("/cgi-bin/quecmanager/network/dns.sh", s.HandleDNS)
+	mux.HandleFunc("/cgi-bin/quecmanager/network/mtu.sh", s.HandleMTU)
+	mux.HandleFunc("/cgi-bin/quecmanager/network/ip_passthrough.sh", s.HandleIPPassthrough)
+	mux.HandleFunc("/cgi-bin/quecmanager/network/traffic_masquerade.sh", s.HandleTrafficMasquerade)
 	mux.HandleFunc("/cgi-bin/quecmanager/network/video_optimizer.sh", s.HandleVideoOptimizer)
+
+	// Speedtest Routes
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_check.sh", s.HandleSpeedtestCheck)
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_servers.sh", s.HandleSpeedtestServers)
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_start.sh", s.HandleSpeedtestStart)
+
+	// System Management & Polling Routes
+	mux.HandleFunc("/cgi-bin/quecmanager/system/ping_profile.sh", s.HandlePingProfile)
+	mux.HandleFunc("/cgi-bin/quecmanager/system/quality_thresholds.sh", s.HandleQualityThresholds)
+	mux.HandleFunc("/cgi-bin/quecmanager/system/adaptive_polling.sh", s.HandleAdaptivePolling)
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/sms_forwarding.sh", s.HandleSMSForwarding)
 
 	// System Management & Update Routes
 	mux.HandleFunc("/cgi-bin/quecmanager/system/ssh_password.sh", s.HandleSSHPassword)
 	mux.HandleFunc("/cgi-bin/quecmanager/system/update.sh", s.HandleSoftwareUpdate)
+	mux.HandleFunc("/cgi-bin/quecmanager/system/pending_reboot.sh", s.HandlePendingReboot)
+	mux.HandleFunc("/cgi-bin/quecmanager/system/known_sims.sh", s.HandleKnownSims)
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/fplmn.sh", s.HandleFPLMN)
+	mux.HandleFunc("/cgi-bin/quecmanager/monitoring/bandwidth.sh", s.HandleBandwidthSettings)
+	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest.sh", s.HandleSpeedtestStart)
 	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/cell_scan_start.sh", s.HandleCellScanStart)
 	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/neighbour_scan_start.sh", s.HandleCellScanStart)
 

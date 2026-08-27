@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -84,13 +85,35 @@ func (c *Client) Exec(cmd string) (string, error) {
 }
 
 func (c *Client) execOnModem(cmd string) (string, error) {
-	// Check if qcmd binary is available
-	if _, err := exec.LookPath("qcmd"); err == nil {
-		out, err := exec.Command("qcmd", cmd).Output()
-		if err != nil {
-			return "", fmt.Errorf("qcmd execution failed: %w", err)
+	// 1. Try atcli_smd11 directly (Quectel SMD AT client binary)
+	if _, err := exec.LookPath("/usr/bin/atcli_smd11"); err == nil {
+		out, err := exec.Command("/usr/bin/atcli_smd11", cmd).Output()
+		if err == nil {
+			res := strings.TrimSpace(string(out))
+			if res != "" {
+				return res, nil
+			}
 		}
-		return strings.TrimSpace(string(out)), nil
+	} else if _, err := exec.LookPath("atcli_smd11"); err == nil {
+		out, err := exec.Command("atcli_smd11", cmd).Output()
+		if err == nil {
+			res := strings.TrimSpace(string(out))
+			if res != "" {
+				return res, nil
+			}
+		}
+	}
+
+	// 2. Try piping command to qcmd via stdin
+	if _, err := exec.LookPath("qcmd"); err == nil {
+		subCmd := exec.Command("sh", "-c", fmt.Sprintf("echo %s | qcmd", strconv.Quote(cmd)))
+		out, err := subCmd.Output()
+		if err == nil {
+			res := strings.TrimSpace(string(out))
+			if res != "" {
+				return res, nil
+			}
+		}
 	}
 
 	// Dynamic re-check if port was plugged in post-launch

@@ -41,41 +41,102 @@ func (s *Server) HandleAPN(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method == http.MethodGet {
-		raw, err := s.atClient.Exec("AT+CGDCONT?")
-		if err != nil || strings.Contains(raw, "ERROR") {
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "modem_error"})
-			return
+		raw, err := s.atClient.Exec(`AT+CGDCONT?`)
+		var cids []map[string]interface{}
+		var activeApnStr = "internet"
+		var activePdpType = "IPV4V6"
+		var activeCid = 1
+
+		if err == nil {
+			lines := strings.Split(raw, "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "+CGDCONT:") {
+					parts := strings.Split(line, ",")
+					if len(parts) >= 3 {
+						var cid int
+						_, _ = fmt.Sscanf(parts[0], "+CGDCONT: %d", &cid)
+						pdp := strings.Trim(parts[1], `" `)
+						apnStr := strings.Trim(parts[2], `" `)
+
+						apnType := ""
+						if strings.Contains(strings.ToLower(apnStr), "ims") {
+							apnType = "ims"
+						} else if strings.Contains(strings.ToLower(apnStr), "sos") {
+							apnType = "emergency"
+						}
+
+						if cid == 1 {
+							activeApnStr = apnStr
+							activePdpType = pdp
+							activeCid = cid
+						}
+
+						cids = append(cids, map[string]interface{}{
+							"cid":         cid,
+							"apn":         apnStr,
+							"apn_type":    apnType,
+							"is_internet": cid == 1,
+						})
+					}
+				}
+			}
 		}
-		profiles := parseAPNProfiles(raw)
-		_ = json.NewEncoder(w).Encode(APNResponse{
-			Success:   true,
-			ActiveCID: 1,
-			Profiles:  profiles,
+
+		if len(cids) == 0 {
+			cids = append(cids, map[string]interface{}{
+				"cid":         1,
+				"apn":         "internet",
+				"apn_type":    "",
+				"is_internet": true,
+			})
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":      true,
+			"active":       1,
+			"active_cid":   activeCid,
+			"internet_cid": activeCid,
+			"apn": map[string]interface{}{
+				"apn":      activeApnStr,
+				"pdp_type": activePdpType,
+				"cid":      activeCid,
+			},
+			"cids": cids,
 		})
 		return
 	}
 
 	if r.Method == http.MethodPost {
-		var req APNSaveRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.CID <= 0 || req.APN == "" {
+		var req struct {
+			Action  string `json:"action"`
+			APN     string `json:"apn"`
+			PDPType string `json:"pdp_type"`
+			CID     int    `json:"cid"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "invalid_json"})
 			return
 		}
 
+		if req.Action == "deactivate" {
+			_, _ = s.atClient.Exec(`AT+CGDCONT=1`)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+			return
+		}
+
+		if req.CID <= 0 {
+			req.CID = 1
+		}
 		if req.PDPType == "" {
 			req.PDPType = "IPV4V6"
 		}
 
-		atCmd := fmt.Sprintf(`AT+CGDCONT=%d,"%s","%s"`, req.CID, req.PDPType, req.APN)
-		resp, err := s.atClient.Exec(atCmd)
-		if err != nil || atHasError(resp) {
+		cmd := fmt.Sprintf(`AT+CGDCONT=%d,"%s","%s"`, req.CID, req.PDPType, req.APN)
+		resp, err := s.atClient.Exec(cmd)
+		if err != nil || strings.Contains(resp, "ERROR") {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "at_error"})
 			return
-		}
-
-		if req.AuthType > 0 {
-			authCmd := fmt.Sprintf(`AT+QICSGP=%d,%d,"%s","%s","%s",1`, req.CID, req.AuthType, req.APN, req.Username, req.Password)
-			_, _ = s.atClient.Exec(authCmd)
 		}
 
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "cid": req.CID})

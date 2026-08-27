@@ -73,7 +73,16 @@ func (p *Poller) pollOnce() {
 
 	if resp, err := p.atClient.Exec("ATI"); err == nil && !strings.Contains(resp, "ERROR") {
 		modemReachable = true
-		firmware = parseATIResponse(resp)
+		atiMfg, atiModel, atiFw := parseATIResponse(resp)
+		if atiMfg != "" {
+			manufacturer = atiMfg
+		}
+		if atiModel != "" {
+			model = atiModel
+		}
+		if atiFw != "" {
+			firmware = atiFw
+		}
 	}
 
 	imei := ""
@@ -97,13 +106,54 @@ func (p *Poller) pollOnce() {
 		}
 	}
 
-	if resp, err := p.atClient.Exec("AT+CGSN"); err == nil && !strings.Contains(resp, "ERROR") {
+	if resp, err := p.atClient.Exec("AT+GSN"); err == nil && !strings.Contains(resp, "ERROR") {
+		modemReachable = true
+		imei = parseIMEIResponse(resp)
+	} else if resp, err := p.atClient.Exec("AT+CGSN"); err == nil && !strings.Contains(resp, "ERROR") {
 		modemReachable = true
 		imei = parseIMEIResponse(resp)
 	}
 
+	iccid := ""
+	if resp, err := p.atClient.Exec("AT+QCCID"); err == nil && !strings.Contains(resp, "ERROR") {
+		if val := parseSingleLineParam(resp, "+QCCID:"); val != "" {
+			iccid = val
+		}
+	}
+
+	imsi := ""
+	if resp, err := p.atClient.Exec("AT+CIMI"); err == nil && !strings.Contains(resp, "ERROR") {
+		lines := strings.Split(resp, "\n")
+		for _, l := range lines {
+			l = strings.TrimSpace(l)
+			l = strings.Trim(l, `"`)
+			if len(l) >= 14 && len(l) <= 16 && isDigits(l) {
+				imsi = l
+				break
+			}
+		}
+	}
+
+	wanIp := ""
+	if resp, err := p.atClient.Exec("AT+CGPADDR=1"); err == nil && !strings.Contains(resp, "ERROR") {
+		if val := parseSingleLineParam(resp, "+CGPADDR:"); val != "" {
+			parts := strings.Split(val, ",")
+			if len(parts) >= 2 {
+				wanIp = strings.Trim(strings.TrimSpace(parts[1]), `"`)
+			} else if len(parts) == 1 {
+				wanIp = strings.Trim(strings.TrimSpace(parts[0]), `"`)
+			}
+		}
+	}
+
 	// Default Fallback Signals & Metrics
 	carrier := ""
+	if copsResp, err := p.atClient.Exec("AT+COPS?"); err == nil && !strings.Contains(copsResp, "ERROR") {
+		cName, _ := parseCOPS(copsResp)
+		if cName != "" {
+			carrier = cName
+		}
+	}
 	netType := "LTE"
 	serviceStatus := "unknown"
 	simSlot := 1
@@ -179,6 +229,7 @@ func (p *Poller) pollOnce() {
 			"sim_slot":       simSlot,
 			"carrier":        carrier,
 			"service_status": serviceStatus,
+			"wan_ipv4":       wanIp,
 			"ca_active":      false,
 			"ca_count":       0,
 		},
@@ -205,21 +256,25 @@ func (p *Poller) pollOnce() {
 			"sinr":  nrSinr,
 		},
 		"device": map[string]interface{}{
-			"poller_tier":     "active",
-			"temperature":     temp,
-			"cpu_usage":       cpuUsage,
-			"memory_used_mb":  memUsedMb,
-			"memory_total_mb": memTotalMb,
-			"uptime_seconds":  uptimeSec,
-			"firmware":        firmware,
-			"manufacturer":    manufacturer,
-			"model":           model,
-			"imei":            imei,
-			"iccid":           "",
-			"imsi":            "",
-			"phone_number":    "",
-			"lte_category":    "Cat-16",
-			"mimo":            "2x2",
+			"poller_tier":              "active",
+			"temperature":              temp,
+			"cpu_usage":                cpuUsage,
+			"memory_used_mb":           memUsedMb,
+			"memory_total_mb":          memTotalMb,
+			"uptime_seconds":           uptimeSec,
+			"firmware":                 firmware,
+			"manufacturer":             manufacturer,
+			"model":                    model,
+			"imei":                     imei,
+			"iccid":                    iccid,
+			"imsi":                     imsi,
+			"phone_number":             "",
+			"lte_category":             "Cat-20",
+			"mimo":                     "4x4",
+			"supported_lte_bands":      "1:3:5:7:8:20:28:38:40:41:42:43",
+			"supported_nsa_nr5g_bands": "1:3:5:7:8:20:28:38:40:41:77:78:79",
+			"supported_sa_nr5g_bands":  "1:3:5:7:8:20:28:38:40:41:77:78:79",
+			"supported_nrdc_nr5g_bands": "41:77:78:79",
 		},
 		"connectivity": map[string]interface{}{
 			"online":             true,
@@ -262,15 +317,22 @@ func parseSingleLineParam(resp, prefix string) string {
 	return ""
 }
 
-func parseATIResponse(resp string) string {
+func parseATIResponse(resp string) (manufacturer string, model string, firmware string) {
 	lines := strings.Split(resp, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.Contains(line, "Built@") || strings.Contains(line, "Revision:") || strings.Contains(line, "Firmware:") {
-			return strings.Trim(line, `"`)
+	for _, rawLine := range lines {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || line == "OK" || strings.HasPrefix(line, "AT") {
+			continue
+		}
+		if strings.EqualFold(line, "Quectel") || strings.EqualFold(line, "Sierra Wireless") || strings.EqualFold(line, "Fibocom") {
+			manufacturer = line
+		} else if strings.Contains(line, "Revision:") || strings.Contains(line, "Firmware:") || strings.Contains(line, "Built@") {
+			firmware = line
+		} else if len(line) >= 3 && len(line) <= 25 && model == "" {
+			model = line
 		}
 	}
-	return ""
+	return manufacturer, model, firmware
 }
 
 func parseCSQ(resp string) *int {
@@ -346,19 +408,57 @@ func parseCOPS(resp string) (string, string) {
 }
 
 func parseQuectelQENG(resp string, netType, serviceStatus, carrier, lteBand *string, earfcn, pci, rsrp, rsrq, rssi, sinr **int, nrBand *string, nrArfcn, nrPci, nrRsrp, nrRsrq, nrSinr **int) {
-	// Example +QENG: "servingcell","NOCONN","LTE","FDD",510,10,1B4C01,345,1825,3,5,5,-95,-10,-65,12,14
 	for _, line := range strings.Split(resp, "\n") {
-		if strings.Contains(line, `+QENG: "servingcell"`) {
-			parts := strings.Split(line, ",")
-			if len(parts) >= 4 {
-				*serviceStatus = strings.Trim(parts[1], `"`)
-				if len(parts) >= 15 && (strings.Contains(line, `"LTE"`) || strings.Contains(line, `"FDD"`) || strings.Contains(line, `"TDD"`)) {
-					*netType = "LTE"
-					if val, err := strconv.Atoi(parts[6]); err == nil {
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, `+QENG:`) {
+			continue
+		}
+		parts := strings.Split(line, ",")
+		if len(parts) < 3 {
+			continue
+		}
+
+		if strings.Contains(line, `+QENG: "servingcell"`) && len(parts) >= 3 {
+			*serviceStatus = strings.Trim(parts[1], `"`)
+			rat := strings.Trim(parts[2], `"`)
+
+			if rat == "NR5G-SA" {
+				*netType = "NR5G-SA"
+				if len(parts) >= 14 {
+					if val, err := strconv.Atoi(parts[7]); err == nil {
+						*nrArfcn = &val
+					}
+					if val, err := strconv.Atoi(parts[8]); err == nil {
+						*nrPci = &val
+					}
+					if bandNum, err := strconv.Atoi(parts[9]); err == nil {
+						*nrBand = fmt.Sprintf("N%d", bandNum)
+					} else {
+						*nrBand = strings.Trim(parts[9], `"`)
+					}
+					if val, err := strconv.Atoi(parts[11]); err == nil {
+						*nrRsrp = &val
+					}
+					if val, err := strconv.Atoi(parts[12]); err == nil {
+						*nrRsrq = &val
+					}
+					if val, err := strconv.Atoi(parts[13]); err == nil {
+						*nrSinr = &val
+					}
+				}
+			} else if rat == "LTE" || strings.Contains(line, `"LTE"`) {
+				*netType = "LTE"
+				if len(parts) >= 16 {
+					if val, err := strconv.Atoi(parts[7]); err == nil {
 						*pci = &val
 					}
-					if val, err := strconv.Atoi(parts[7]); err == nil {
+					if val, err := strconv.Atoi(parts[8]); err == nil {
 						*earfcn = &val
+					}
+					if bandNum, err := strconv.Atoi(parts[9]); err == nil {
+						*lteBand = fmt.Sprintf("B%d", bandNum)
+					} else {
+						*lteBand = strings.Trim(parts[9], `"`)
 					}
 					if val, err := strconv.Atoi(parts[12]); err == nil {
 						*rsrp = &val
@@ -369,12 +469,61 @@ func parseQuectelQENG(resp string, netType, serviceStatus, carrier, lteBand *str
 					if val, err := strconv.Atoi(parts[14]); err == nil {
 						*rssi = &val
 					}
-					if len(parts) >= 16 {
-						if val, err := strconv.Atoi(parts[15]); err == nil {
-							*sinr = &val
-						}
+					if val, err := strconv.Atoi(parts[15]); err == nil {
+						*sinr = &val
 					}
 				}
+			}
+		}
+
+		if strings.Contains(line, `+QENG: "LTE"`) && len(parts) >= 15 {
+			if *netType == "" || *netType == "unknown" {
+				*netType = "LTE"
+			}
+			if val, err := strconv.Atoi(parts[6]); err == nil {
+				*pci = &val
+			}
+			if val, err := strconv.Atoi(parts[7]); err == nil {
+				*earfcn = &val
+			}
+			if bandNum, err := strconv.Atoi(parts[8]); err == nil {
+				*lteBand = fmt.Sprintf("B%d", bandNum)
+			}
+			if val, err := strconv.Atoi(parts[11]); err == nil {
+				*rsrp = &val
+			}
+			if val, err := strconv.Atoi(parts[12]); err == nil {
+				*rsrq = &val
+			}
+			if val, err := strconv.Atoi(parts[13]); err == nil {
+				*rssi = &val
+			}
+			if val, err := strconv.Atoi(parts[14]); err == nil {
+				*sinr = &val
+			}
+		}
+
+		if strings.Contains(line, `+QENG: "NR5G-NSA"`) && len(parts) >= 10 {
+			if *netType != "NR5G-SA" {
+				*netType = "NR5G-NSA"
+			}
+			if val, err := strconv.Atoi(parts[3]); err == nil {
+				*nrPci = &val
+			}
+			if val, err := strconv.Atoi(parts[4]); err == nil {
+				*nrRsrp = &val
+			}
+			if val, err := strconv.Atoi(parts[5]); err == nil {
+				*nrSinr = &val
+			}
+			if val, err := strconv.Atoi(parts[6]); err == nil {
+				*nrRsrq = &val
+			}
+			if val, err := strconv.Atoi(parts[7]); err == nil {
+				*nrArfcn = &val
+			}
+			if bandNum, err := strconv.Atoi(parts[8]); err == nil {
+				*nrBand = fmt.Sprintf("N%d", bandNum)
 			}
 		}
 	}
@@ -575,4 +724,13 @@ func parseIMEIResponse(resp string) string {
 		}
 	}
 	return ""
+}
+
+func isDigits(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
