@@ -5,7 +5,7 @@
   <h3>Universal, High-Performance Go-Powered GUI & Core for Cellular Modem Management</h3>
   <p>Visualize, configure, and optimize Quectel & Universal cellular modems with an ultra-lightweight Go backend and React 19 UI</p>
 
-  ![Version](https://img.shields.io/badge/version-v0.2.3--go-blue?style=flat-square)
+  ![Version](https://img.shields.io/badge/version-v0.2.4--beta.1-blue?style=flat-square)
   ![Go](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square)
   ![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square)
   ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square)
@@ -22,56 +22,141 @@
 
 ---
 
-## ⚡ QManager Go Edition Architectural Revolution
+## ⚡ Installation Guide
 
-QManager Go Edition replaces legacy `lighttpd`, CGI Bash scripts, and heavy process spawning with a **single, standalone compiled Go binary (`qmanager-core`)**. The Next.js 16 SPA frontend is embedded directly into the executable using Go's `embed.FS`, delivering an enterprise-grade cellular modem management engine.
-
-### 🌟 Key Performance Improvements
-
-- 🚀 **60-70% Memory Reduction** — Uses only **~12 – 18 MB RAM** (down from 80+ MB required by lighttpd + CGI subshells).
-- ⚡ **Sub-15ms API Response Latency** — Native Go `net/http` in-memory routing eliminates subshell `fork()` overhead.
-- 🔒 **Auto TLS/HTTPS Encryption (`tlsgen`)** — Native X.509 ECDSA self-signed certificate generator on port 443 out-of-the-box.
-- 🛡️ **Thread-Safe Dual AT Mutex Engine** — Dual memory lock (`sync.Mutex`) + file lock (`/tmp/qmanager_at.lock`) guarantees zero AT command collision or serial buffer corruption on `/dev/smd11` / `/dev/ttyUSB*`.
-- 📦 **Single Executable Deployment** — Embedded Next.js SPA UI inside `qmanager-core` via `embed.FS` with disk fallback via `WEB_ROOT`.
-- ⏱️ **Asynchronous Poller Goroutine** — Non-blocking background status collector updating state atomics every 5 seconds.
-- 📦 **1-Click Workstation Flashing** — Native `deploy.sh` (Bash/Linux/macOS) and `deploy.ps1` (PowerShell/Windows) for single-command modem flashing over SSH or ADB.
+Choose between the **1-Click Automatic Deployment** (recommended) or **Manual Installation**.
 
 ---
 
-## 📊 Legacy Shell CGI vs QManager Go Edition
+### 1. 🚀 Automatic 1-Click Installation (Recommended)
 
-| Feature / Metric | 🐌 Legacy Shell CGI (`lighttpd`) | 🚀 QManager Go Edition (`qmanager-core`) |
-| :--- | :--- | :--- |
-| **Backend Architecture** | Lighttpd + 80+ Bash CGI Scripts | **Single Standalone Go Binary (`qmanager-core`)** |
-| **RAM Footprint** | 80 MB – 120 MB | **~12 MB – 18 MB** (60-70% Savings) |
-| **API Latency** | 120ms – 400ms (High Subshell Overhead) | **< 15ms** (Native In-Memory Handlers) |
-| **Process Spawning** | 10–30 `fork()` per request | **0 Subshells** (100% In-Process) |
-| **AT Command Safety** | Basic shell flock (prone to leaks) | **Dual Lock**: `sync.Mutex` + `/tmp/qmanager_at.lock` |
-| **HTTPS Support** | Requires manual OpenSSL / Lighttpd config | **Built-in Auto TLS Cert Generator (`tlsgen`)** |
-| **Deployment Method** | Manual SCP + multi-file file unpack | **1-Click Flashing** via `deploy.sh` / `deploy.ps1` |
+#### Option A: Direct 1-Line Remote Install (On Modem / Router)
+Run this single command over SSH on your target modem/router (e.g. `192.168.225.1`):
 
----
-
-## 📦 1-Click Modem Deployment (Recommended)
-
-Deploy `qmanager-core` and its systemd service directly from your workstation to your modem in one step:
-
-### From Linux / macOS / Git Bash:
 ```sh
-# Deploy over SSH to modem (default IP: 192.168.225.1)
-./deploy.sh 192.168.225.1
+wget -qO- https://raw.githubusercontent.com/latifangren/QManager-GO/main/deploy.sh | sh
+```
+
+#### Option B: Deploy from Workstation via SSH / ADB
+
+**From Bash / Linux / macOS:**
+```sh
+# Deploy over SSH to default modem IP (192.168.225.1)
+./deploy.sh
+
+# Or deploy to custom IP
+./deploy.sh 192.168.1.1
 
 # Or deploy over ADB connection
 ./deploy.sh adb
 ```
 
-### From Windows PowerShell:
+**From Windows PowerShell:**
 ```powershell
 # Deploy over SSH
 .\deploy.ps1 -Target "192.168.225.1"
 
 # Or deploy over ADB
 .\deploy.ps1 -Method "ADB"
+```
+
+---
+
+### 2. 🛠️ Manual Installation Guide
+
+If you are uploading compiled binaries directly to modems (Quectel RM520N/RM551E), Raspberry Pi, or x86 Linux hosts:
+
+#### Step 1: Select & Upload the Binary for Your Architecture
+Compiled binaries live in `backend/dist/`:
+- **Quectel RM520N / RM500Q / SDX55 / SDX62 / SDX65 (ARM 32-bit)**: `qmanager-core-armv7`
+- **Quectel RM551E / Raspberry Pi 4/5 / Router (ARM 64-bit)**: `qmanager-core-arm64`
+- **PC / X86_64 Router / Linux VM**: `qmanager-core-amd64`
+
+Upload via SCP to `/usrdata/qmanager-core` (or `/usr/bin/qmanager-core`):
+```sh
+scp backend/dist/qmanager-core-armv7 root@192.168.225.1:/usrdata/qmanager-core
+ssh root@192.168.225.1 "chmod +x /usrdata/qmanager-core"
+```
+
+#### Step 2: Systemd Autostart Configuration (`/lib/systemd/system/qmanager-core.service`)
+Create or edit `/lib/systemd/system/qmanager-core.service` on the device:
+
+```ini
+[Unit]
+Description=QManager Go Core Service
+After=basic.target
+
+[Service]
+Type=simple
+ExecStart=/usrdata/qmanager-core
+Restart=always
+RestartSec=2
+KillMode=process
+Environment=PORT=80
+Environment=TLS_PORT=443
+Environment=TLS_ENABLED=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+> ⚠️ **Important Systemd Boot Fix Note:**
+> Do **NOT** set `After=network-online.target` on Qualcomm Quectel modems. On Quectel internal Linux OS, `network-online.target` remains inactive during cold boot, which prevents Systemd from auto-starting services after a power cycle. Using `After=basic.target` guarantees instant autostart upon boot.
+
+#### Step 3: Enable & Start Systemd Service
+```sh
+ssh root@192.168.225.1 "systemctl daemon-reload && systemctl enable qmanager-core && systemctl start qmanager-core"
+```
+
+#### Step 4: OpenWRT Procd / Init.d Setup (Non-Systemd Devices)
+If your device runs OpenWRT without systemd:
+
+```sh
+# Create /etc/init.d/qmanager-core
+cat << 'EOF' > /etc/init.d/qmanager-core
+#!/bin/sh /etc/rc.common
+START=99
+STOP=10
+
+start() {
+    killall -9 qmanager-core 2>/dev/null
+    /usrdata/qmanager-core >/dev/null 2>&1 &
+}
+
+stop() {
+    killall -9 qmanager-core 2>/dev/null
+}
+EOF
+
+chmod +x /etc/init.d/qmanager-core
+ln -sf /etc/init.d/qmanager-core /etc/rc.d/S99qmanager-core
+/etc/init.d/qmanager-core start
+```
+
+---
+
+## 🔄 Legacy QManager (PHP/Python/Lighttpd) Coexistence & Migration
+
+If your modem previously ran legacy **QManager (PHP/Python/Lighttpd)** or **QuecManager**:
+
+### 1. What Happens to Legacy QManager?
+- **Port Conflict (Port 80/443)**: `qmanager-core` is a standalone Go binary with an embedded Next.js SPA frontend and native HTTP server. It listens on Port 80 and 443. Running both simultaneously on Port 80 will cause a port conflict.
+- **Data & Configuration Preserved**: `qmanager-core` reads and writes to the exact same `/etc/qmanager/` configuration directory (APN, band locks, SIM profiles, custom DNS, tower locks). Upgrading to Go Edition will **NOT** delete your saved SIM profiles or settings.
+
+### 2. Disabling / Cleaning Up Legacy QManager
+To cleanly replace legacy QManager and free up Port 80:
+
+```sh
+ssh root@192.168.225.1
+# 1. Stop and disable legacy lighttpd / python daemons
+systemctl stop lighttpd 2>/dev/null; systemctl disable lighttpd 2>/dev/null
+/etc/init.d/lighttpd stop 2>/dev/null; /etc/init.d/lighttpd disable 2>/dev/null
+killall -9 lighttpd python python3 2>/dev/null
+
+# 2. Enable & start QManager Go Edition
+systemctl daemon-reload
+systemctl enable qmanager-core
+systemctl restart qmanager-core
 ```
 
 ---
@@ -86,13 +171,6 @@ Deploy `qmanager-core` and its systemd service directly from your workstation to
 | **ARMv8 64-bit / ARM64 (SDX72 / SDX75)** | SDX72, SDX75 | Native OpenWRT (`init.d`) | `qmanager-core-arm64` / `armv7` | **Quectel RM551E-GL**, RM550E-GL, RG650V-EU |
 | **Host Router & Gateways (ARM64)** | Any (Passthrough) | OpenWRT / Linux | `qmanager-core-arm64` | Raspberry Pi 4/5, NanoPi, GL.iNet, FriendlyWrt |
 | **PC & Router Hardware (x86_64)** | Any (Passthrough) | Linux / OpenWRT x86 | `qmanager-core-amd64` | x86 Routers, Mini PCs, MikroTik CHR, Linux VMs |
-
-> ℹ️ **Hardware Compatibility & Feature Matrix Note**
-> - **Primary Native Architecture**: QManager Go Edition is natively designed to run **directly inside the internal SoC/Linux OS** of Quectel 4G/5G modems (RM520N, RG501, RM500Q, RM551E, etc.).
-> - **External Linux Host Support (USB Adapters / PC / RPi)**: The Go engine can also run on external Linux hosts connected to modems via USB adapters (e.g. Fibocom L850-GL, Sierra Wireless, Huawei).
-> - **Feature Availability Disclaimer**:
->   - 🟢 **Universal (All Modems & Hosts)**: Basic Telemetry (`CSQ`/`CESQ`/`COPS`), Device Info (`CGSN` IMEI/Manufacturer/Model), Interactive AT Terminal, System Health, Custom DNS, and WebUI Dashboard.
->   - ⚠️ **Quectel-Specific (Quectel RM/RG Modems Only)**: 5G NR/LTE Band Locking (`AT+QNWPREFCFG`), Cell Scanner (`AT+QSCAN`), MBN Profile Manager (`AT+QMBNCFG`), Tower Frequency Locking (`AT+QNWLOCK`), Dual-SIM Switching (`AT+QUIMSLOT`), and Hardware Temperature (`AT+QTEMP`). Modems without Quectel AT extension support will gracefully report standard 3GPP telemetry without crashing.
 
 ---
 
@@ -117,66 +195,7 @@ cd QManager-GO
 
 ---
 
-## 📋 Comprehensive Systemd & OpenWRT Service Setup
-
-If you prefer to configure and run the service manually on `systemd`-based Linux devices (Ubuntu, Debian, systemd-based modem carrier boards):
-
-### Step 1: Upload Binary Executable
-```sh
-scp backend/dist/qmanager-core root@192.168.225.1:/usr/bin/qmanager-core
-ssh root@192.168.225.1 "chmod +x /usr/bin/qmanager-core"
-```
-
-### Step 2: Create Systemd Unit File `/lib/systemd/system/qmanager-core.service`
-Create the systemd unit file on the target device with the following contents:
-
-```ini
-[Unit]
-Description=QManager Go Core Daemon
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/qmanager-core
-Restart=always
-RestartSec=5
-Environment=PORT=80
-Environment=TLS_PORT=443
-Environment=TLS_ENABLED=true
-StandardOutput=journal
-StandardError=journal
-LogRateLimitIntervalSec=30s
-LogRateLimitBurst=50
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### Step 3: Enable & Start the Service
-```sh
-ssh root@192.168.225.1 "systemctl daemon-reload && systemctl enable qmanager-core && systemctl start qmanager-core"
-```
-
-### Step 4: Useful Operational Commands
-```sh
-# Check service status
-systemctl status qmanager-core
-
-# Restart service
-systemctl restart qmanager-core
-
-# Stop service
-systemctl stop qmanager-core
-
-# Stream live system logs
-journalctl -u qmanager-core -f
-```
-
----
-
 ## ⚙️ Environment Variables Reference
-
-Customize `qmanager-core` runtime behavior via environment variables in your systemd file or shell:
 
 | Environment Variable | Default Value | Description |
 | :--- | :--- | :--- |
@@ -185,18 +204,6 @@ Customize `qmanager-core` runtime behavior via environment variables in your sys
 | `TLS_ENABLED` | `true` | Set to `false` to disable auto-generated TLS certificates |
 | `WEB_ROOT` | *(Embedded)* | Optional filesystem path to static web assets if overriding `embed.FS` |
 | `AT_DEVICE` | `/dev/smd11` | Custom AT serial device path |
-
----
-
-## 🛡️ OpenWRT Procd Init.d Alternative (`/etc/init.d/qmanager`)
-
-For standard OpenWRT devices running `procd` (without systemd):
-
-```sh
-# Install OpenWRT init script
-scp scripts/etc/init.d/qmanager root@192.168.225.1:/etc/init.d/qmanager
-ssh root@192.168.225.1 "chmod +x /etc/init.d/qmanager && /etc/init.d/qmanager enable && /etc/init.d/qmanager start"
-```
 
 ---
 
@@ -210,6 +217,8 @@ QManager Go Edition maintains 100% route compatibility with legacy CGI endpoints
 | `/cgi-bin/quecmanager/auth/check.sh` | Verify current session validity |
 | `/cgi-bin/quecmanager/at_cmd/fetch_data.sh` | Retrieve live modem status JSON |
 | `/cgi-bin/quecmanager/at_cmd/send_command.sh` | Safely execute raw AT commands |
+| `/cgi-bin/quecmanager/cellular/radio_details.sh` | On-demand timing advance & DNS readout |
+| `/cgi-bin/quecmanager/profiles/list.sh` | List saved SIM profiles |
 | `/cgi-bin/quecmanager/bands/current.sh` | Query active LTE & 5G NR band locks |
 | `/cgi-bin/quecmanager/bands/lock.sh` | Apply LTE/5G band lock configuration |
 | `/cgi-bin/quecmanager/cellular/sms.sh` | Storage-aware SMS list, send, and delete |
@@ -227,4 +236,3 @@ This project is licensed under the **[MIT License with Commons Clause](LICENSE)*
 
 - Built upon the foundations of **[QManager Universal](https://github.com/dr-dolomite/QManager)** by [DrDolomite](https://github.com/dr-dolomite).
 - Inspired by concepts from **[QuecTool](https://github.com/snowzach/quectool)**.
-- Go Backend & Single-Binary Architecture by [latifangren](https://github.com/latifangren).
