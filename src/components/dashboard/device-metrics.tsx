@@ -88,6 +88,19 @@ function MetricBar({
 }
 
 // =============================================================================
+// Load Average helpers
+// =============================================================================
+/** Parse "1.20 0.90 0.75" (1/5/15 min load) into a number array. */
+function parseLoadAvg(raw: string): number[] {
+  return raw
+    .trim()
+    .split(/\s+/)
+    .map((v) => Number.parseFloat(v))
+    .filter((v) => Number.isFinite(v))
+    .slice(0, 3);
+}
+
+// =============================================================================
 // LiveTrafficRow — the 5-state Live Traffic row
 // =============================================================================
 // Driven SOLELY by the opt-in WebSocket bandwidth monitor. There is NO poller
@@ -416,27 +429,52 @@ const DeviceMetricsComponent = ({
             )}
           </div>
 
-          {/* Load Average (1/5/15 min) */}
+          {/* Load Average (1/5/15 min) — bar chart */}
           <Separator />
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <p className="font-semibold text-muted-foreground text-sm">
-                {t("metrics.load_average")}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <p className="font-semibold text-muted-foreground text-sm">
+                  {t("metrics.load_average")}
+                </p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" className="inline-flex" aria-label={t("metrics.load_average_aria")}>
+                      <TbInfoCircleFilled className="size-3 text-muted-foreground" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{t("metrics.load_average_tooltip")}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <p className="font-semibold text-sm tabular-nums">
+                {loadAvg || "-"}
               </p>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button type="button" className="inline-flex" aria-label={t("metrics.load_average_aria")}>
-                    <TbInfoCircleFilled className="size-3 text-muted-foreground" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{t("metrics.load_average_tooltip")}</p>
-                </TooltipContent>
-              </Tooltip>
             </div>
-            <p className="font-semibold text-sm tabular-nums">
-              {loadAvg || "-"}
-            </p>
+            {loadAvg && (
+              <div className="flex h-10 items-end gap-2">
+                {parseLoadAvg(loadAvg).map((val, i) => (
+                  <div key={i} className="flex flex-1 flex-col items-center gap-1">
+                    <div className="relative h-7 w-full overflow-hidden rounded-md bg-muted/40">
+                      <div
+                        className={`absolute bottom-0 left-0 right-0 rounded-md ${
+                          val >= 2
+                            ? "bg-destructive/70"
+                            : val >= 1
+                              ? "bg-warning/70"
+                              : "bg-success/70"
+                        }`}
+                        style={{ height: `${Math.min(100, val * 35)}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] leading-none text-muted-foreground tabular-nums">
+                      {["1m", "5m", "15m"][i]} {val.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Memory Usage */}

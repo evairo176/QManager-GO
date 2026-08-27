@@ -115,7 +115,9 @@
   "latency": {
     "title": "Internet Latency and Speed Test",
     "chart_latency": "Internet RTT",
-    "chart_packetloss": "Packetloss"
+    "chart_packetloss": "Packetloss",
+    "loading": "Loading latency…",
+    "no_data": "No latency data yet"
   },
   "speedtest": {
     "section_label": "Speed Test",

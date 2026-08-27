@@ -31,6 +31,7 @@ import {
 } from "@/types/speedtest";
 
 import type { ConnectivityStatus } from "@/types/modem-status";
+import { useLatencyHistory } from "@/hooks/use-latency-history";
 
 export const description = "A multiple bar chart";
 
@@ -59,6 +60,13 @@ interface LiveLatencyComponentProps {
 
 const LiveLatencyComponent = ({ connectivity }: LiveLatencyComponentProps) => {
   const { t } = useTranslation("dashboard");
+
+  // Latency history comes from the dedicated ping-history endpoint (the
+  // ping daemon's NDJSON), NOT from status.json's connectivity block, which
+  // never carried latency_history — using it made the chart render blank.
+  const { data: pingHistory, isLoading: historyLoading } = useLatencyHistory({
+    pollInterval: 15_000,
+  });
 
   const chartConfig = useMemo<ChartConfig>(
     () => ({
@@ -118,43 +126,25 @@ const LiveLatencyComponent = ({ connectivity }: LiveLatencyComponentProps) => {
   );
 
   const chartData = useMemo(() => {
-    if (
-      !connectivity?.latency_history ||
-      connectivity.latency_history.length === 0
-    ) {
+    if (!pingHistory || pingHistory.length === 0) {
       return [];
     }
 
-    const history = connectivity.latency_history;
-    const interval = connectivity.history_interval_sec || 2;
+    // PingHistoryEntry is a flat array of {ts, lat, avg, min, max, loss, jit}
+    // — the most recent CHART_POINTS entries become the chart's points.
+    const history = pingHistory;
+    const displaySlice = history.slice(-CHART_POINTS);
 
-    // We need the last CHART_POINTS entries for display, but also preceding
-    // entries for the rolling packet-loss window calculation.
-    const endIdx = history.length;
-    const startIdx = Math.max(0, endIdx - CHART_POINTS);
-    const displaySlice = history.slice(startIdx, endIdx);
-
-    return displaySlice.map((rtt, i) => {
-      // Absolute index in the full history array
-      const absIdx = startIdx + i;
-
-      // Time label: seconds ago counting back from the most recent entry
-      const secsAgo = (displaySlice.length - 1 - i) * interval;
+    return displaySlice.map((entry, i) => {
+      const secsAgo = (displaySlice.length - 1 - i) * (connectivity?.history_interval_sec || 2);
       const timeLabel = secsAgo === 0 ? "Now" : `-${secsAgo}s`;
-
-      // Rolling packet loss: look back LOSS_WINDOW entries ending at absIdx
-      const windowStart = Math.max(0, absIdx - LOSS_WINDOW + 1);
-      const window = history.slice(windowStart, absIdx + 1);
-      const nullCount = window.filter((v) => v === null).length;
-      const lossPct = Math.round((nullCount / window.length) * 100);
-
       return {
         time: timeLabel,
-        latency: rtt !== null ? Math.round(rtt) : 0,
-        packetloss: lossPct,
+        latency: entry.lat !== null && entry.lat !== undefined ? Math.round(entry.lat) : 0,
+        packetloss: Math.round(entry.loss ?? 0),
       };
     });
-  }, [connectivity?.latency_history, connectivity?.history_interval_sec]);
+  }, [pingHistory, connectivity?.history_interval_sec]);
 
   // Build the footer description from cached result
   const footerDescription = useMemo(() => {
@@ -189,6 +179,15 @@ const LiveLatencyComponent = ({ connectivity }: LiveLatencyComponentProps) => {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {historyLoading ? (
+            <div className="flex h-[150px] items-center justify-center">
+              <p className="text-sm text-muted-foreground">{t("latency.loading")}</p>
+            </div>
+          ) : chartData.length === 0 ? (
+            <div className="flex h-[150px] items-center justify-center">
+              <p className="text-sm text-muted-foreground">{t("latency.no_data")}</p>
+            </div>
+          ) : (
           <ChartContainer config={chartConfig}>
             <LineChart
               accessibilityLayer
@@ -248,6 +247,7 @@ const LiveLatencyComponent = ({ connectivity }: LiveLatencyComponentProps) => {
               />
             </LineChart>
           </ChartContainer>
+          )}
         </CardContent>
         <CardFooter>
           <div className="flex w-full items-start gap-2 text-sm">
