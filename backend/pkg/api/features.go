@@ -306,22 +306,64 @@ func (s *Server) HandleQualityThresholds(w http.ResponseWriter, r *http.Request)
 }
 
 // HandleAdaptivePolling handles adaptive polling tier config
+// Frontend contract (use-adaptive-polling.ts):
+//   GET → { success, settings: {enabled, active_grace, idle_interval, idle_threshold,
+//          deep_idle_interval}, tier, isDefault }
 func (s *Server) HandleAdaptivePolling(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	mode := "auto"
+	enabled := true
+	activeGrace := 300
+	idleInterval := 10
+	idleThreshold := 60
+	deepIdleInterval := 60
 	cfg := qmReadJSONFile("/etc/qmanager/adaptive_polling.json")
 	if m, ok := cfg["mode"].(string); ok && m != "" {
 		mode = m
+	}
+	if v, ok := cfg["enabled"].(bool); ok {
+		enabled = v
+	}
+	if v, ok := asInt(cfg["active_grace"]); ok {
+		activeGrace = v
+	}
+	if v, ok := asInt(cfg["idle_interval"]); ok {
+		idleInterval = v
+	}
+	if v, ok := asInt(cfg["idle_threshold"]); ok {
+		idleThreshold = v
+	}
+	if v, ok := asInt(cfg["deep_idle_interval"]); ok {
+		deepIdleInterval = v
 	}
 
 	if r.Method == http.MethodPost {
 		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
-			if m, ok := body["mode"].(string); ok {
+			if m, ok := body["mode"].(string); ok && m != "" {
 				mode = m
-				writeJSONFile("/etc/qmanager/adaptive_polling.json", map[string]any{"mode": mode})
 			}
+			if v, ok := body["enabled"].(bool); ok {
+				enabled = v
+			}
+			if v, ok := asInt(body["active_grace"]); ok {
+				activeGrace = v
+			}
+			if v, ok := asInt(body["idle_interval"]); ok {
+				idleInterval = v
+			}
+			if v, ok := asInt(body["idle_threshold"]); ok {
+				idleThreshold = v
+			}
+			if v, ok := asInt(body["deep_idle_interval"]); ok {
+				deepIdleInterval = v
+			}
+			writeJSONFile("/etc/qmanager/adaptive_polling.json", map[string]any{
+				"mode": mode, "enabled": enabled,
+				"active_grace": activeGrace, "idle_interval": idleInterval,
+				"idle_threshold": idleThreshold, "deep_idle_interval": deepIdleInterval,
+			})
 		}
 	}
 
@@ -334,9 +376,15 @@ func (s *Server) HandleAdaptivePolling(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":     true,
-		"mode":        mode,
-		"active_tier": activeTier,
+		"success": true,
+		"settings": map[string]interface{}{
+			"enabled": enabled, "active_grace": activeGrace,
+			"idle_interval": idleInterval, "idle_threshold": idleThreshold,
+			"deep_idle_interval": deepIdleInterval,
+		},
+		"mode":      mode,
+		"tier":      activeTier,
+		"isDefault": mode == "auto",
 	})
 }
 
@@ -888,7 +936,9 @@ func (s *Server) bandwidthGet(w http.ResponseWriter) {
 		},
 		"status": status,
 		"dependencies": map[string]any{
-			"websocat_installed": fileExistsAny("/usr/bin/websocat", "/opt/sbin/websocat"),
+			// The Go-native WebSocket server (bandwidth_ws.go) replaces websocat,
+			// so the dependency is satisfied regardless of the binary's presence.
+			"websocat_installed": true,
 		},
 	})
 }

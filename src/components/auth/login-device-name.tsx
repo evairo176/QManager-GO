@@ -1,7 +1,6 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useTranslation } from "react-i18next";
 
 import { useDeviceHostname } from "@/hooks/use-device-hostname";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,7 +25,6 @@ import { DUR, EASE_OUT_EXPO } from "@/lib/motion";
 // =============================================================================
 
 export function LoginDeviceName() {
-  const { t } = useTranslation("common");
   const { hostname, isLoading } = useDeviceHostname();
   const shouldReduceMotion = useReducedMotion();
 
@@ -65,13 +63,7 @@ export function LoginDeviceName() {
           transition={transition}
           className="text-muted-foreground min-w-0 max-w-full truncate text-sm font-medium tracking-tight"
         >
-          {/* Screen readers get the whole sentence once; the visible name is
-              hidden from the a11y tree so the hostname isn't announced as a
-              bare, context-free token. */}
-          <span className="sr-only">
-            {t("login.signing_in_to", { hostname })}
-          </span>
-          <span aria-hidden>{t("login.signing_in_as", { hostname })}</span>
+          {hostname}
         </motion.p>
       ) : null}
     </AnimatePresence>

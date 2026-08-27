@@ -57,6 +57,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// System & Reboot Routes
 	mux.HandleFunc("/cgi-bin/quecmanager/system/reboot.sh", s.HandleSystemReboot)
 	mux.HandleFunc("/cgi-bin/quecmanager/system/logs.sh", s.HandleSystemLogs)
+	mux.HandleFunc("/cgi-bin/quecmanager/system/ipa_offload.sh", s.HandleIPAOffload)
 	mux.HandleFunc("/cgi-bin/quecmanager/public/overview.sh", s.HandlePublicOverview)
 
 	// APN & MBN Management Routes
@@ -409,7 +410,16 @@ func (s *Server) HandleSIMSlot(w http.ResponseWriter, r *http.Request) {
 // HandleHostname returns host system hostname
 func (s *Server) HandleHostname(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	hostname, _ := os.Hostname()
+
+	// Prefer the user-set name from qmanager.conf [settings].hostname (kernel
+	// hostname on this platform is the SoC name, e.g. "sdxprairie", which leaks
+	// into the login "Sign in as <name>" line and is confusing). Fall back to
+	// kernel hostname, then a generic default.
+	cfg := qmReadConfig()
+	hostname := qmStr(cfg["settings"]["hostname"])
+	if hostname == "" {
+		hostname, _ = os.Hostname()
+	}
 	if hostname == "" {
 		hostname = "qmanager-host"
 	}

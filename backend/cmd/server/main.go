@@ -86,6 +86,10 @@ func main() {
 		Handler: mux,
 	}
 
+	// Live bandwidth WebSocket server (Go-native, replaces websocat bridge).
+	// Reads ws_port from qmanager.conf bridge_monitor; defaults to 8838.
+	server.StartBandwidthWebSocket(0)
+
 	var tlsServer *http.Server
 
 	// Setup HTTPS TLS Certificates if enabled

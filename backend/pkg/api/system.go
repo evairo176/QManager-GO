@@ -49,6 +49,54 @@ func (s *Server) HandleSystemReboot(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
+// HandleIPAOffload reads/toggles IPA hardware packet offload.
+// Frontend contract (use-ipa-offload.ts):
+//   GET                                → { available, enabled }
+//   POST {"action":"enable"|"disable"} → { enabled, pending_reboot_required }
+// IPA is managed by the firmware QCMAP stack (rmnet_ipa0 interface). The host
+// only reads the live interface state and persists the desired setting; the
+// modem applies it, so a reboot is reported as required.
+func (s *Server) HandleIPAOffload(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// available = the IPA interface exists on this platform
+	available := false
+	if out, err := exec.Command("ip", "link", "show", "rmnet_ipa0").Output(); err == nil && len(out) > 0 {
+		available = true
+	}
+	// enabled = persisted setting (default on: IPA is the active data path)
+	enabled := true
+	if cfg := qmReadConfig(); cfg["settings"] != nil {
+		if v, ok := cfg["settings"]["ipa_offload"].(float64); ok {
+			enabled = v != 0
+		} else if v, ok := cfg["settings"]["ipa_offload"].(bool); ok {
+			enabled = v
+		}
+	}
+
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+			if action, _ := body["action"].(string); action == "enable" || action == "disable" {
+				enabled = action == "enable"
+				_ = qmWriteSection("settings", map[string]any{"ipa_offload": enabled})
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":                 true,
+			"enabled":                 enabled,
+			"pending_reboot_required": true,
+		})
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   true,
+		"available": available,
+		"enabled":   enabled,
+	})
+}
+
 // HandleSystemLogs returns parsed system log entries + stats.
 // Frontend contract (system-logs-card.tsx):
 //   { success, entries: [{timestamp,level,component,pid,message}], total,
