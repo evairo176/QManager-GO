@@ -57,13 +57,14 @@ function getServiceColor(
     return "red";
   }
 
+  const uType = type.toUpperCase();
   // 5G (NSA or SA, with or without CA) → green
-  if (type === "5G-NSA" || type === "5G-SA") {
+  if (uType.includes("5G") || uType.includes("NR")) {
     return "green";
   }
 
   // LTE with carrier aggregation (LTE+) → green
-  if (type === "LTE" && caActive) {
+  if (uType.includes("LTE") && caActive) {
     return "green";
   }
 
@@ -111,43 +112,44 @@ const NetworkStatusComponent = ({
     caActive: boolean,
     nrCaActive: boolean,
   ) {
-    switch (type) {
-      case "5G-NSA":
-        return {
-          icon: <MdOutline5G className="size-full text-white" />,
-          label: t("network.signal_5g"),
-          sublabel: nrCaActive ? t("network.signal_5g_lte_nrca") : t("network.signal_5g_lte"),
-          hasNetwork: true,
-        };
-      case "5G-SA":
-        return {
-          icon: <MdOutline5G className="size-full text-white" />,
-          label: t("network.signal_5g"),
-          sublabel: nrCaActive ? t("network.signal_sa_nrca") : t("network.signal_sa"),
-          hasNetwork: true,
-        };
-      case "LTE":
-        return caActive
-          ? {
-              icon: <Md4gPlusMobiledata className="size-full text-white" />,
-              label: t("network.signal_lte_plus"),
-              sublabel: t("network.ca_4g"),
-              hasNetwork: true,
-            }
-          : {
-              icon: <Md4gMobiledata className="size-full text-white" />,
-              label: t("network.signal_lte"),
-              sublabel: t("network.connected_4g"),
-              hasNetwork: true,
-            };
-      default:
-        return {
-          icon: <Md3gMobiledata className="size-full text-white/50" />,
-          label: t("network.signal_generic"),
-          sublabel: t("network.no_signal"),
-          hasNetwork: false,
-        };
+    const uType = type.toUpperCase();
+    if (uType.includes("5G-SA") || uType === "NR5G-SA") {
+      return {
+        icon: <MdOutline5G className="size-full text-white" />,
+        label: t("network.signal_5g"),
+        sublabel: nrCaActive ? t("network.signal_sa_nrca") : t("network.signal_sa"),
+        hasNetwork: true,
+      };
     }
+    if (uType.includes("5G") || uType.includes("NR5G")) {
+      return {
+        icon: <MdOutline5G className="size-full text-white" />,
+        label: t("network.signal_5g"),
+        sublabel: nrCaActive ? t("network.signal_5g_lte_nrca") : t("network.signal_5g_lte"),
+        hasNetwork: true,
+      };
+    }
+    if (uType.includes("LTE") || uType.includes("4G")) {
+      return caActive
+        ? {
+            icon: <Md4gPlusMobiledata className="size-full text-white" />,
+            label: t("network.signal_lte_plus"),
+            sublabel: t("network.ca_4g"),
+            hasNetwork: true,
+          }
+        : {
+            icon: <Md4gMobiledata className="size-full text-white" />,
+            label: t("network.signal_lte"),
+            sublabel: t("network.connected_4g"),
+            hasNetwork: true,
+          };
+    }
+    return {
+      icon: <Md3gMobiledata className="size-full text-white/50" />,
+      label: t("network.signal_generic"),
+      sublabel: t("network.no_signal"),
+      hasNetwork: false,
+    };
   }
 
   // --- Helper: Service status label ---

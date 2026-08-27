@@ -108,7 +108,7 @@ export function useSpeedtest(): UseSpeedtestReturn {
           return;
         }
         const data: SpeedtestCheckResponse = await resp.json();
-        if (mountedRef.current) setIsAvailable(data.available);
+        if (mountedRef.current) setIsAvailable(data.available ?? (data as any).installed ?? true);
       } catch {
         if (mountedRef.current) setIsAvailable(false);
       }
@@ -172,24 +172,25 @@ export function useSpeedtest(): UseSpeedtestReturn {
           break;
 
         case "running": {
-          const p = data.progress;
+          const p = data.progress || (data as any).current;
           const newPhase = (data.phase || "initializing") as SpeedtestPhase;
           setPhase(newPhase);
 
           if (p && typeof p === "object") {
             setCurrentProgress(p);
-            if (p.type === "ping") setProgress(p.ping.progress);
-            else if (p.type === "download") setProgress(p.download.progress);
-            else if (p.type === "upload") setProgress(p.upload.progress);
+            if (p.type === "ping" && p.ping) setProgress(p.ping.progress ?? 0.5);
+            else if (p.type === "download" && p.download) setProgress(p.download.progress ?? 0.5);
+            else if (p.type === "upload" && p.upload) setProgress(p.upload.progress ?? 0.5);
             else setProgress(0);
           }
           break;
         }
 
         case "complete":
+        case "completed":
           setPhase("complete");
           setProgress(1);
-          setResult(data.result);
+          setResult(data.result || ((data as any).current?.type === "result" ? (data as any).current : null));
           setCurrentProgress(null);
           stopPolling();
           break;

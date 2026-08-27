@@ -274,7 +274,7 @@ const ProfileViewComponent = ({ sim, currentIccid, onEdit }: ProfileViewProps) =
                     currentIccid,
                   )}
                   index={i}
-                  scenarioName={nameForId(profile.scenario.default)}
+                  scenarioName={nameForId(profile.scenario?.default ?? "balanced")}
                   busy={
                     applyOpen &&
                     !applyTerminal &&
@@ -362,7 +362,7 @@ const ProfileRow = ({
 }) => {
   const { t } = useTranslation("cellular");
   const isActive = status !== "inactive";
-  const scheduled = summary.scenario.schedule.enabled;
+  const scheduled = summary.scenario?.schedule?.enabled ?? false;
 
   const verizonMpdn = summary.mno === "Verizon";
 

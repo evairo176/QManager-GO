@@ -34,9 +34,12 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/send_command.sh", RateLimitMiddleware(atCmdLimiter, s.HandleSendCommand))
 	mux.HandleFunc("/cgi-bin/quecmanager/bands/current.sh", s.HandleBandsCurrent)
 	mux.HandleFunc("/cgi-bin/quecmanager/bands/lock.sh", s.HandleBandsLock)
+	mux.HandleFunc("/cgi-bin/quecmanager/bands/failover_status.sh", s.HandleBandsFailoverStatus)
+	mux.HandleFunc("/cgi-bin/quecmanager/bands/failover_toggle.sh", s.HandleBandsFailoverToggle)
 	mux.HandleFunc("/cgi-bin/quecmanager/cellular/sms.sh", s.HandleSMS)
 
 	// Cellular & Network Settings Routes
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/radio_details.sh", s.HandleRadioDetails)
 	mux.HandleFunc("/cgi-bin/quecmanager/cellular/settings.sh", s.HandleCellularSettings)
 	mux.HandleFunc("/cgi-bin/quecmanager/cellular/imei.sh", s.HandleIMEISettings)
 	mux.HandleFunc("/cgi-bin/quecmanager/cellular/network_priority.sh", s.HandleNetworkPriority)
@@ -69,7 +72,11 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// SIM Profiles & Connection Scenarios Routes
 	mux.HandleFunc("/cgi-bin/quecmanager/profiles/list.sh", s.HandleProfilesList)
+	mux.HandleFunc("/cgi-bin/quecmanager/profiles/get.sh", s.HandleProfilesGet)
+	mux.HandleFunc("/cgi-bin/quecmanager/profiles/save.sh", s.HandleProfilesSave)
+	mux.HandleFunc("/cgi-bin/quecmanager/profiles/delete.sh", s.HandleProfilesDelete)
 	mux.HandleFunc("/cgi-bin/quecmanager/profiles/apply.sh", s.HandleProfilesApply)
+	mux.HandleFunc("/cgi-bin/quecmanager/profiles/current_settings.sh", s.HandleProfilesCurrentSettings)
 	mux.HandleFunc("/cgi-bin/quecmanager/scenarios/list.sh", s.HandleScenariosList)
 
 	// Monitoring & Watchdog Routes
@@ -103,6 +110,11 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_check.sh", s.HandleSpeedtestCheck)
 	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_servers.sh", s.HandleSpeedtestServers)
 	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_start.sh", s.HandleSpeedtestStart)
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_status.sh", s.HandleSpeedtestStatus)
+	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest_check.sh", s.HandleSpeedtestCheck)
+	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest_servers.sh", s.HandleSpeedtestServers)
+	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest_start.sh", s.HandleSpeedtestStart)
+	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest_status.sh", s.HandleSpeedtestStatus)
 
 	// System Management & Polling Routes
 	mux.HandleFunc("/cgi-bin/quecmanager/system/ping_profile.sh", s.HandlePingProfile)
@@ -216,43 +228,6 @@ func (s *Server) HandleSendCommand(w http.ResponseWriter, r *http.Request) {
 		"success":  true,
 		"response": resp,
 		"command":  req.Command,
-	})
-}
-
-// HandleBandsCurrent queries configured bands from modem
-func (s *Server) HandleBandsCurrent(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	raw, err := s.atClient.Exec(`AT+QNWPREFCFG="ue_capability_band"`)
-	if err != nil || strings.Contains(raw, "ERROR") {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "modem_error",
-			"message": "Failed to query current band configuration",
-		})
-		return
-	}
-
-	lteBands := extractBandList(raw, "lte_band")
-	nsaBands := extractBandList(raw, "nsa_nr5g_band")
-	saBands := extractBandList(raw, "nr5g_band")
-
-	failoverEnabled := fileExistsAndEquals("/etc/qmanager/band_failover_enabled", "1")
-	failoverActivated := fileExists("/tmp/qmanager_band_failover")
-	watcherRunning := fileExists("/tmp/qmanager_band_failover.pid")
-
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"current": map[string]string{
-			"lte_bands":      lteBands,
-			"nsa_nr5g_bands": nsaBands,
-			"sa_nr5g_bands":  saBands,
-		},
-		"failover": map[string]interface{}{
-			"enabled":         failoverEnabled,
-			"activated":       failoverActivated,
-			"watcher_running": watcherRunning,
-		},
 	})
 }
 

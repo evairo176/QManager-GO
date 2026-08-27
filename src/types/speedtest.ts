@@ -168,6 +168,7 @@ export type SpeedtestStatusResponse =
   | { status: "idle" }
   | { status: "running"; phase: string; progress: SpeedtestProgressLine }
   | { status: "complete"; result: SpeedtestFinalResult }
+  | { status: "completed"; result: SpeedtestFinalResult }
   | { status: "error"; error: string; detail?: string };
 
 // --- Utility Functions -------------------------------------------------------

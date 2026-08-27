@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"os/exec"
+
+	"qmanager-backend/pkg/speedtest"
 )
 
 type RebootRequest struct {
@@ -66,6 +68,7 @@ func (s *Server) HandleSpeedtestCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":   true,
+		"available": true,
 		"installed": true,
 		"binary":    "embedded",
 	})
@@ -91,17 +94,36 @@ func (s *Server) HandleSpeedtestServers(w http.ResponseWriter, r *http.Request) 
 // HandleSpeedtestStart initiates a background speed test run
 func (s *Server) HandleSpeedtestStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	mgr := speedtest.GetManager()
+	err := mgr.StartTest("http://speed.cloudflare.com")
+	if err != nil {
+		if err.Error() == "already_running" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "already_running",
+			})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"test_id": "test_1",
-		"status":  "completed",
-		"results": map[string]interface{}{
-			"download_mbps": 75.4,
-			"upload_mbps":   32.8,
-			"ping_ms":       18.5,
-			"jitter_ms":     3.2,
-		},
+		"status":  "running",
 	})
+}
+
+// HandleSpeedtestStatus returns current speed test execution progress
+func (s *Server) HandleSpeedtestStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	mgr := speedtest.GetManager()
+	statusData := mgr.GetStatus()
+	_ = json.NewEncoder(w).Encode(statusData)
 }
 
 // HandlePublicOverview returns non-sensitive pre-auth device info
