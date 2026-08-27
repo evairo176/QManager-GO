@@ -16,6 +16,7 @@
 coverage.out
 
 # build outputs (Go & web)
+/.next/
 /dist/
 /backend/dist/
 /backend/build/
