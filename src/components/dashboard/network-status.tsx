@@ -347,7 +347,7 @@ const NetworkStatusComponent = ({
                 {/* Status badge overlay — check when 4G/5G, X when 3G fallback, hidden in airplane mode */}
                 {!isAirplaneMode && (
                   <div
-                    className={`absolute top-1 right-4 size-6 rounded-full flex items-center justify-center shadow-md ${
+                    className={`absolute -top-1 -right-1 size-6 rounded-full flex items-center justify-center shadow-md ${
                       hasNetwork ? "bg-success" : "bg-destructive"
                     }`}
                   >
@@ -393,7 +393,7 @@ const NetworkStatusComponent = ({
                 </div>
                 {!isAirplaneMode && (
                   <div
-                    className={`absolute top-1 right-4 size-6 rounded-full flex items-center justify-center shadow-md ${
+                    className={`absolute -top-1 -right-1 size-6 rounded-full flex items-center justify-center shadow-md ${
                       isServiceActive ? "bg-success" : "bg-destructive"
                     }`}
                   >
