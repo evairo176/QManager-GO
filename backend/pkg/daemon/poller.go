@@ -263,6 +263,13 @@ func (p *Poller) pollOnce() {
 		}
 	}
 
+	// Check SIM PIN state & presence (AT+CPIN?)
+	if cpinResp, err := p.atClient.Exec("AT+CPIN?"); err == nil {
+		if strings.Contains(cpinResp, "CME ERROR") || strings.Contains(cpinResp, "ERROR") || !strings.Contains(cpinResp, "+CPIN: READY") {
+			serviceStatus = "sim_error"
+		}
+	}
+
 	// Normalize serviceStatus & netType for UI compatibility
 	serviceStatus = normalizeServiceStatus(serviceStatus)
 	if strings.Contains(netType, "NSA") {
