@@ -11,7 +11,6 @@ import {
   XCircleIcon,
   type LucideIcon,
 } from "lucide-react";
-import { SiOpenwrt } from "react-icons/si";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -465,23 +464,10 @@ export default function OverviewCard() {
           </div>
         </div>
 
-        {/* Top-right action cluster: LuCI passthrough + theme switcher. The
-              two icon buttons live in CardAction so the header keeps the
-              No-Header-Icon contract — icons appear in the action slot, not
-              alongside the title. */}
+        {/* Top-right action cluster: theme switcher. The LuCI passthrough was
+              removed — this platform (Quectel systemd) has no OpenWrt LuCI
+              installed, so the link only opened a duplicate page. */}
         <CardAction className="flex items-center gap-1.5">
-          <Button
-            variant="outline"
-            size="icon"
-            asChild
-            aria-label={t("overview.actions.luci_aria")}
-            title={t("overview.actions.luci")}
-          >
-            <a href="/cgi-bin/luci" target="_blank" rel="noopener noreferrer">
-              <SiOpenwrt className="h-[1.2rem] w-[1.2rem]" aria-hidden />
-              <span className="sr-only">{t("overview.actions.luci")}</span>
-            </a>
-          </Button>
           <ModeToggle />
         </CardAction>
       </CardHeader>
