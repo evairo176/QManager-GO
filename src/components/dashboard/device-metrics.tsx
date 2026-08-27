@@ -32,7 +32,6 @@ import {
 import { useUnitPreferences } from "@/hooks/use-system-settings";
 import { useBandwidthSettings } from "@/hooks/use-bandwidth-settings";
 import { useBandwidthMonitor } from "@/hooks/use-bandwidth-monitor";
-import { useDataUsage, formatBytes } from "@/hooks/use-data-usage";
 import { useTranslation } from "react-i18next";
 
 interface DeviceMetricsComponentProps {
@@ -293,62 +292,6 @@ function LiveTrafficRow() {
   );
 }
 
-// =============================================================================
-// DataUsageRow — accumulated cellular quota usage.
-// =============================================================================
-// Shows lifetime + today's data used (download/upload), accumulated by the
-// backend from /proc/net/dev deltas (persisted, survives reboots).
-function DataUsageRow() {
-  const { t } = useTranslation("dashboard");
-  const { data, isLoading } = useDataUsage();
-
-  return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-1.5">
-        <p className="font-semibold text-muted-foreground text-sm">
-          {t("metrics.data_usage")}
-        </p>
-      </div>
-      {isLoading ? (
-        <Skeleton className="h-4 w-28" />
-      ) : data ? (
-        <div className="flex items-center gap-x-3">
-          <div className="flex items-center gap-1">
-            <TbCircleArrowDownFilled className="text-info size-5" />
-            <p className="font-semibold text-sm tabular-nums">
-              {formatBytes(data.downloadBytes)}
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
-            <TbCircleArrowUpFilled className="text-purple-500 size-5" />
-            <p className="font-semibold text-sm tabular-nums">
-              {formatBytes(data.uploadBytes)}
-            </p>
-          </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" className="inline-flex" aria-label={t("metrics.data_usage_today_aria")}>
-                <TbInfoCircleFilled className="size-3 text-muted-foreground" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>
-                {t("metrics.data_usage_today", {
-                  day: data.day,
-                  down: formatBytes(data.dayDownloadBytes),
-                  up: formatBytes(data.dayUploadBytes),
-                })}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
-      ) : (
-        <p className="font-semibold text-sm text-muted-foreground">-</p>
-      )}
-    </div>
-  );
-}
-
 const DeviceMetricsComponent = ({
   deviceData,
   lteData,
@@ -491,10 +434,6 @@ const DeviceMetricsComponent = ({
           {/* Live Traffic — driven solely by the opt-in WebSocket monitor */}
           <Separator />
           <LiveTrafficRow />
-
-          {/* Data usage (quota) — accumulated from /proc/net/dev */}
-          <Separator />
-          <DataUsageRow />
 
           {/* LTE Cell Distance */}
           <Separator />
