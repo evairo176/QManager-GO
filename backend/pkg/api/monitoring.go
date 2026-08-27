@@ -26,27 +26,6 @@ func (s *Server) HandleMonitoringAlerts(w http.ResponseWriter, r *http.Request) 
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
 
-// HandleMonitoringWatchdog handles connection watchdog status and controls
-func (s *Server) HandleMonitoringWatchdog(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method == http.MethodGet {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": true,
-			"watchdog": map[string]interface{}{
-				"enabled":       true,
-				"running":       true,
-				"ping_target":   "8.8.8.8",
-				"fail_count":    0,
-				"recovery_step": 0,
-			},
-		})
-		return
-	}
-
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
-}
-
 // HandleVPNTailscale handles Tailscale status and login
 func (s *Server) HandleVPNTailscale(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")

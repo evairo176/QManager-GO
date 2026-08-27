@@ -3,10 +3,13 @@ package api
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 )
 
 type DataUsageResponse struct {
@@ -210,13 +213,287 @@ func (s *Server) HandleMTU(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleTrafficMasquerade handles traffic masquerading / SNAT config
+// ---------------------------------------------------------------------------
+// Traffic Engine — Video Optimizer + Traffic Masquerade (DPI evasion).
+// Both features are mutually exclusive modes of ONE shared nfqws instance on
+// NFQUEUE 200 (see scripts/etc/init.d/qmanager_dpi).
+// Config:   /etc/qmanager/qmanager.conf (JSON, key "traffic_engine")
+//           /etc/qmanager/video_optimizer.enabled ("enabled"|"disabled")
+// State:    /var/run/nfqws.pid (service uptime)
+// Counters: /tmp/qmanager_video_packets, /sys/kernel/debug/nfqws
+// Flags:    /tmp/qmanager_video_reload
+// ---------------------------------------------------------------------------
+
+const (
+	qmTrafficEngineSection = "traffic_engine"
+	qmNfqwsPIDFile         = "/var/run/nfqws.pid"
+	qmVideoReloadFlag      = "/tmp/qmanager_video_reload"
+	qmVideoPacketsFile     = "/tmp/qmanager_video_packets"
+	qmHostlistFile         = "/etc/qmanager/video_domains.txt"
+)
+
+// fileExistsAny reports whether any of the candidate paths exists on disk.
+func fileExistsAny(paths ...string) bool {
+	for _, p := range paths {
+		if fileExists(p) {
+			return true
+		}
+	}
+	return false
+}
+
+// qmFileContains reports whether the file at path contains any of the needles
+// as a token in its content.
+func qmFileContains(path string, needles ...string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	hay := string(data)
+	for _, n := range needles {
+		if strings.Contains(hay, n) {
+			return true
+		}
+	}
+	return false
+}
+
+// qmNfqwsInstalled reports whether the nfqws binary is present on disk.
+func qmNfqwsInstalled() bool {
+	return fileExistsAny("/usr/bin/nfqws", "/opt/sbin/nfqws")
+}
+
+// qmKernelModuleLoaded reports whether NFQUEUE kernel support is present in
+// /proc/modules (nfnetlink_queue or nf_tables).
+func qmKernelModuleLoaded() bool {
+	return qmFileContains("/proc/modules", "nfnetlink_queue", "nfqws", "nf_tables")
+}
+
+// qmServiceRunning reports whether the nfqws daemon is alive by checking its
+// PID file and confirming the process still exists.
+func qmServiceRunning() bool {
+	data, err := os.ReadFile(qmNfqwsPIDFile)
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	// FindProcess always succeeds on Unix; signal 0 probes existence.
+	return proc.Signal(syscall.Signal(0)) == nil
+}
+
+// qmServiceUptime formats the nfqws service uptime from the PID file mtime,
+// mirroring dpi_get_uptime() in scripts/usr/lib/qmanager/dpi_helper.sh.
+func qmServiceUptime() string {
+	info, err := os.Stat(qmNfqwsPIDFile)
+	if err != nil {
+		return "0s"
+	}
+	elapsed := int64(time.Since(info.ModTime()).Seconds())
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	switch {
+	case elapsed >= 86400:
+		return fmt.Sprintf("%dd %dh", elapsed/86400, elapsed%86400/3600)
+	case elapsed >= 3600:
+		return fmt.Sprintf("%dh %dm", elapsed/3600, elapsed%3600/60)
+	case elapsed >= 60:
+		return fmt.Sprintf("%dm %ds", elapsed/60, elapsed%60)
+	default:
+		return fmt.Sprintf("%ds", elapsed)
+	}
+}
+
+// qmPacketCount reads the processed-packet counter. Prefers the real nfqws
+// debugfs counter, falls back to the /tmp counter file written by the daemon.
+func qmPacketCount() int {
+	for _, p := range []string{"/sys/kernel/debug/nfqws", "/sys/kernel/debug/nfqws/nfqws", qmVideoPacketsFile} {
+		if data, err := os.ReadFile(p); err == nil {
+			fields := strings.Fields(string(data))
+			if len(fields) > 0 {
+				if n, err := strconv.Atoi(fields[0]); err == nil {
+					return n
+				}
+			}
+		}
+	}
+	return 0
+}
+
+// qmDomainCount counts non-empty, non-comment lines in the hostlist file.
+func qmDomainCount() int {
+	data, err := os.ReadFile(qmHostlistFile)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
+// trafficEngineStatus computes the shared service status + uptime + counters.
+// A mode is "running" only when it is enabled in config AND the nfqws daemon
+// is alive (avoids cross-mode contamination when the other mode owns it).
+func trafficEngineStatus() (status string, uptime string, packets int) {
+	cfg := qmReadConfig()[qmTrafficEngineSection]
+	running := qmCfgBool(cfg, "enabled", false) && qmServiceRunning()
+	if running {
+		status = "running"
+	} else {
+		status = "stopped"
+	}
+	return status, qmServiceUptime(), qmPacketCount()
+}
+
+// handleTrafficEngineGet serves GET for both traffic_engine.sh and
+// video_optimizer.sh (masquerade + video optimizer modes).
+func (s *Server) handleTrafficEngineGet(w http.ResponseWriter, r *http.Request, masquerade bool) {
+	cfg := qmReadConfig()[qmTrafficEngineSection]
+
+	status, uptime, packets := trafficEngineStatus()
+
+	base := map[string]any{
+		"success":              true,
+		"enabled":              qmCfgBool(cfg, "enabled", false),
+		"other_enabled":        qmCfgBool(cfg, "other_enabled", false),
+		"status":               status,
+		"uptime":               uptime,
+		"packets_processed":    packets,
+		"binary_installed":     qmNfqwsInstalled(),
+		"kernel_module_loaded": qmKernelModuleLoaded(),
+	}
+
+	if masquerade {
+		sni := ""
+		if v, ok := cfg["sni_domain"].(string); ok {
+			sni = v
+		}
+		if sni == "" {
+			sni = "speedtest.net"
+		}
+		base["sni_domain"] = sni
+		_ = json.NewEncoder(w).Encode(base)
+		return
+	}
+
+	// Video optimizer mode
+	base["desync_repeats"] = qmCfgInt(cfg, "desync_repeats", 1)
+	base["domains_loaded"] = qmDomainCount()
+	_ = json.NewEncoder(w).Encode(base)
+}
+
+// handleTrafficEngineSave persists a save payload for either mode.
+func (s *Server) handleTrafficEngineSave(w http.ResponseWriter, body map[string]any, masquerade bool) {
+	updates := map[string]any{}
+
+	if v, ok := body["enabled"]; ok {
+		if b, ok := v.(bool); ok {
+			updates["enabled"] = map[bool]int{true: 1, false: 0}[b]
+		}
+	}
+
+	// Mutex: enabling one mode disables the other.
+	if enabled, ok := updates["enabled"]; ok && enabled == 1 {
+		updates["other_enabled"] = 0
+	} else if !ok {
+		// No explicit enable change; preserve current value.
+		cfg := qmReadConfig()[qmTrafficEngineSection]
+		updates["other_enabled"] = map[bool]int{true: 1, false: 0}[qmCfgBool(cfg, "other_enabled", false)]
+	}
+
+	if masquerade {
+		if v, ok := body["sni_domain"].(string); ok {
+			sni := strings.TrimSpace(v)
+			if sni == "" {
+				sni = "speedtest.net"
+			}
+			if !strings.Contains(sni, ".") {
+				_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "reject_field", "detail": "sni_domain must contain at least one dot"})
+				return
+			}
+			updates["sni_domain"] = sni
+		}
+	} else {
+		if v, ok := body["desync_repeats"]; ok {
+			if n, ok := asInt(v); ok {
+				if n < 1 || n > 10 {
+					n = 1
+				}
+				updates["desync_repeats"] = n
+			}
+		}
+	}
+
+	if len(updates) > 0 {
+		_ = qmWriteSection(qmTrafficEngineSection, updates)
+	}
+
+	// Signal the daemon to reload; boot persistence is handled by the init.d
+	// service which reads the config at boot.
+	_ = os.WriteFile(qmVideoReloadFlag, []byte("reload"), 0644)
+
+	_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+}
+
+// asInt coerces a JSON-decoded value into an int when possible.
+func asInt(v any) (int, bool) {
+	switch t := v.(type) {
+	case float64:
+		return int(t), true
+	case int:
+		return t, true
+	case string:
+		if n, err := strconv.Atoi(t); err == nil {
+			return n, true
+		}
+	case bool:
+		if t {
+			return 1, true
+		}
+		return 0, true
+	}
+	return 0, false
+}
+
+// HandleTrafficMasquerade handles traffic masquerading / SNAT config.
+// GET returns the masquerade view of the traffic engine; POST accepts
+// save (and save_masquerade aliases) to update config + request reload.
 func (s *Server) HandleTrafficMasquerade(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"enabled": false,
-	})
+
+	if r.Method == http.MethodGet {
+		s.handleTrafficEngineGet(w, r, true)
+		return
+	}
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "invalid_json"})
+			return
+		}
+		action, _ := body["action"].(string)
+		switch action {
+		case "save", "save_masquerade", "":
+			s.handleTrafficEngineSave(w, body, true)
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "unknown_action", "detail": action})
+		}
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "method_not_allowed"})
 }
 
 // HandleSMSForwarding handles SMS forwarding service config
@@ -298,15 +575,114 @@ func (s *Server) HandleKnownSims(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleBandwidthSettings handles network bandwidth monitor settings
+// ---------------------------------------------------------------------------
+// Bandwidth Monitor — live per-interface traffic via websocat WebSocket.
+// Config: /etc/qmanager/qmanager.conf (JSON, key "bridge_monitor")
+// State:  /tmp/qmanager_bandwidth_status.json (written by the monitor daemon)
+// Flags:  /tmp/qmanager_bandwidth_reload
+// ---------------------------------------------------------------------------
+
+const (
+	qmBridgeMonitorSection = "bridge_monitor"
+	qmBandwidthStatusFile  = "/tmp/qmanager_bandwidth_status.json"
+	qmBandwidthReloadFlag  = "/tmp/qmanager_bandwidth_reload"
+)
+
+// HandleBandwidthSettings handles network bandwidth monitor settings.
+// GET returns settings, runtime status and dependency checks; POST
+// (save_settings) persists to qmanager.conf and signals a reload.
 func (s *Server) HandleBandwidthSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if r.Method == http.MethodPost {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+
+	if r.Method == http.MethodGet {
+		s.bandwidthGet(w)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "invalid_json"})
+			return
+		}
+		action, _ := body["action"].(string)
+		switch action {
+		case "save_settings":
+			s.bandwidthSave(w, body)
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "unknown_action", "detail": action})
+		}
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "method_not_allowed"})
+}
+
+func (s *Server) bandwidthGet(w http.ResponseWriter) {
+	cfg := qmReadConfig()[qmBridgeMonitorSection]
+
+	interfaces := ""
+	if v, ok := cfg["interfaces"].(string); ok {
+		interfaces = v
+	}
+	if interfaces == "" {
+		interfaces = "br-lan,eth0,rmnet_data0,rmnet_data1,rmnet_ipa0"
+	}
+
+	status := map[string]bool{"websocat_running": false, "monitor_running": false}
+	if raw, err := os.ReadFile(qmBandwidthStatusFile); err == nil {
+		var st map[string]any
+		if json.Unmarshal(raw, &st) == nil {
+			status["websocat_running"] = qmCfgBool(st, "websocat_running", false)
+			status["monitor_running"] = qmCfgBool(st, "monitor_running", false)
+		}
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
-		"enabled": true,
+		"settings": map[string]any{
+			"enabled":         qmCfgBool(cfg, "enabled", false),
+			"refresh_rate_ms": qmCfgInt(cfg, "refresh_rate_ms", 1000),
+			"ws_port":         qmCfgInt(cfg, "ws_port", 8838),
+			"interfaces":      interfaces,
+		},
+		"status": status,
+		"dependencies": map[string]any{
+			"websocat_installed": fileExistsAny("/usr/bin/websocat", "/opt/sbin/websocat"),
+		},
 	})
+}
+
+func (s *Server) bandwidthSave(w http.ResponseWriter, body map[string]any) {
+	updates := map[string]any{}
+
+	if v, ok := body["enabled"]; ok {
+		if b, ok := v.(bool); ok {
+			updates["enabled"] = map[bool]int{true: 1, false: 0}[b]
+		}
+	}
+	if n, ok := asInt(body["refresh_rate_ms"]); ok {
+		if n < 100 {
+			n = 100
+		}
+		updates["refresh_rate_ms"] = n
+	}
+	if n, ok := asInt(body["ws_port"]); ok {
+		if n < 1 || n > 65535 {
+			n = 8838
+		}
+		updates["ws_port"] = n
+	}
+	if v, ok := body["interfaces"].(string); ok {
+		if strings.TrimSpace(v) != "" {
+			updates["interfaces"] = strings.TrimSpace(v)
+		}
+	}
+
+	if len(updates) > 0 {
+		_ = qmWriteSection(qmBridgeMonitorSection, updates)
+	}
+
+	// Signal the init.d service to (re)start/stop + regenerate config.
+	_ = os.WriteFile(qmBandwidthReloadFlag, []byte("reload"), 0644)
+
+	_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
 }

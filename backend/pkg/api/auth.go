@@ -1,10 +1,12 @@
 package api
 
 import (
+	"crypto/sha256"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
@@ -20,6 +22,27 @@ var globalSessions = &SessionStore{
 
 type LoginRequest struct {
 	Password string `json:"password"`
+}
+
+const authConfigPath = "/etc/qmanager/auth.json"
+
+// verifyPassword checks password against /etc/qmanager/auth.json using the
+// same scheme as the original QManager: sha256(salt + password) hex digest.
+// Falls back to "admin" when the auth file does not exist.
+func (s *Server) verifyPassword(password string) bool {
+	data, err := os.ReadFile(authConfigPath)
+	if err != nil {
+		return password == "admin"
+	}
+	var auth struct {
+		Hash string `json:"hash"`
+		Salt string `json:"salt"`
+	}
+	if json.Unmarshal(data, &auth) != nil || auth.Salt == "" || auth.Hash == "" {
+		return password == "admin"
+	}
+	sum := sha256.Sum256([]byte(auth.Salt + password))
+	return hex.EncodeToString(sum[:]) == auth.Hash
 }
 
 type LoginResponse struct {
@@ -45,8 +68,10 @@ func (s *Server) HandleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expectedPass := "admin" // Default fallback password for QManager
-	if req.Password != expectedPass {
+	// Verify against /etc/qmanager/auth.json (sha256(salt+password)) so the
+	// real QManager password works. Falls back to "admin" only when the
+	// auth file is missing (first-boot default).
+	if !s.verifyPassword(req.Password) {
 		_ = json.NewEncoder(w).Encode(LoginResponse{
 			Success: false,
 			Error:   "invalid_password",

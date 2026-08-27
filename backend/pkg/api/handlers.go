@@ -52,6 +52,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// History Charts Routes
 	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/fetch_signal_history.sh", s.HandleFetchSignalHistory)
 	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/fetch_ping_history.sh", s.HandleFetchPingHistory)
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/fetch_events.sh", s.HandleFetchEvents)
 
 	// System & Reboot Routes
 	mux.HandleFunc("/cgi-bin/quecmanager/system/reboot.sh", s.HandleSystemReboot)
@@ -82,6 +83,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Monitoring & Watchdog Routes
 	mux.HandleFunc("/cgi-bin/quecmanager/monitoring/alerts.sh", s.HandleMonitoringAlerts)
 	mux.HandleFunc("/cgi-bin/quecmanager/monitoring/watchdog.sh", s.HandleMonitoringWatchdog)
+	mux.HandleFunc("/cgi-bin/quecmanager/vpn/netbird.sh", s.HandleNetBird)
 	mux.HandleFunc("/cgi-bin/quecmanager/vpn/tailscale.sh", s.HandleVPNTailscale)
 
 	// System Health Check & Language Packs Routes
@@ -425,21 +427,49 @@ func (s *Server) HandleDNS(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleVideoOptimizer manages Traffic Engine & DPI masking settings
+// HandleVideoOptimizer manages Traffic Engine & DPI masking settings.
+// GET serves the video optimizer view (or the masquerade view when called
+// with ?section=masquerade); POST accepts save / save_masquerade actions.
 func (s *Server) HandleVideoOptimizer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if r.Method == http.MethodPost {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Traffic Engine settings saved"})
+
+	if r.Method == http.MethodGet {
+		switch r.URL.Query().Get("section") {
+		case "masquerade":
+			s.handleTrafficEngineGet(w, r, true)
+			return
+		}
+		switch r.URL.Query().Get("action") {
+		case "verify_status":
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "status": "idle"})
+			return
+		case "install_status":
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "status": "idle"})
+			return
+		}
+		s.handleTrafficEngineGet(w, r, false)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"settings": map[string]interface{}{
-			"enabled":    false,
-			"nfqws":      false,
-			"masquerade": true,
-		},
-	})
+
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "invalid_json"})
+			return
+		}
+		action, _ := body["action"].(string)
+		switch action {
+		case "save":
+			s.handleTrafficEngineSave(w, body, false)
+		case "save_masquerade":
+			s.handleTrafficEngineSave(w, body, true)
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "unknown_action", "detail": action})
+		}
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "method_not_allowed"})
 }
 
 // HandleSSHPassword updates the system SSH password

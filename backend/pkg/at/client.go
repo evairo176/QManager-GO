@@ -85,6 +85,21 @@ func (c *Client) Exec(cmd string) (string, error) {
 }
 
 func (c *Client) execOnModem(cmd string) (string, error) {
+	// 0. Prefer qcmd — the QManager AT gatekeeper that uses flock to
+	// serialize access to /dev/smd11. On this platform the shell daemons
+	// (qmanager_poller, qmanager_watchcat) also go through qcmd, so using it
+	// here guarantees we never collide with them on the serial port.
+	if _, err := exec.LookPath("qcmd"); err == nil {
+		subCmd := exec.Command("sh", "-c", fmt.Sprintf("echo %s | qcmd", strconv.Quote(cmd)))
+		out, err := subCmd.Output()
+		if err == nil {
+			res := strings.TrimSpace(string(out))
+			if res != "" {
+				return res, nil
+			}
+		}
+	}
+
 	// 1. Try atcli_smd11 directly (Quectel SMD AT client binary)
 	if _, err := exec.LookPath("/usr/bin/atcli_smd11"); err == nil {
 		out, err := exec.Command("/usr/bin/atcli_smd11", cmd).Output()
