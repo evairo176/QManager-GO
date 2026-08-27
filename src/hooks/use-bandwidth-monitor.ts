@@ -3,6 +3,7 @@
 import { useCallback, useRef, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
+import { useRealtime } from "@/components/realtime-provider";
 import type {
   BandwidthSettings,
   BandwidthStatus,
@@ -218,30 +219,53 @@ export function useBandwidthMonitor(): UseBandwidthMonitorReturn {
     }
   }, [settings]);
 
-  // ─── Connect/disconnect based on settings ──────────────────────────────────
+  // ─── Connect/disconnect based on settings + realtime toggle ───────────────
+
+  // Respect the global "Live data" switch: when realtime is OFF, do not open
+  // the bandwidth WebSocket (it would keep streaming + burn CPU/RAM despite
+  // the user asking to pause live data).
+  const { enabled: realtimeEnabled } = useRealtime();
+
+  // Keep the latest connect inputs in refs so the effect below never needs to
+  // re-create `connect` (which was causing WebSocket leaks on every settings
+  // refetch: the old socket was overwritten but never closed).
+  const connectInputsRef = useRef({
+    settings: settings ?? null,
+    status: status ?? null,
+    realtimeEnabled,
+  });
+  connectInputsRef.current = { settings: settings ?? null, status: status ?? null, realtimeEnabled };
+
+  const closeSocket = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.onclose = null; // prevent reconnect scheduling
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    reconnectDelayRef.current = RECONNECT_BASE_MS;
+    setIsConnected(false);
+  }, []);
 
   useEffect(() => {
-    const shouldConnect =
-      settings?.enabled &&
-      status?.websocat_running &&
-      status?.monitor_running;
+    const { settings: s, status: st, realtimeEnabled: rt } = connectInputsRef.current;
+    const shouldConnect = rt && s?.enabled && st?.websocat_running && st?.monitor_running;
 
-    if (shouldConnect) {
+    if (!shouldConnect) {
+      // Toggle OFF (or settings disabled) — make sure any live socket is closed.
+      closeSocket();
+      return;
+    }
+
+    if (!wsRef.current) {
       connect();
     }
 
-    return () => {
-      // Cleanup on unmount or settings change
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
-    };
-  }, [settings, status, connect]);
+    return closeSocket;
+  }, [realtimeEnabled, settings?.enabled, status?.websocat_running, status?.monitor_running, connect, closeSocket]);
 
   return {
     chartData,

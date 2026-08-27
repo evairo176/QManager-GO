@@ -87,6 +87,20 @@ func (s *Server) runBandwidthWSServer(port int) {
 func (s *Server) handleBandwidthWS(ws *websocket.Conn) {
 	defer ws.Close()
 
+	// Read loop (in background) so the server detects client disconnect and
+	// frees the TCP connection. Without this the socket stays ESTABLISHED on
+	// the modem side even after the browser closes the WebSocket.
+	readDone := make(chan struct{})
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			if _, err := ws.Read(buf); err != nil {
+				close(readDone)
+				return
+			}
+		}
+	}()
+
 	counters := map[string]*ifaceCounters{}
 	var lastMu sync.Mutex
 
@@ -94,14 +108,19 @@ func (s *Server) handleBandwidthWS(ws *websocket.Conn) {
 	defer ticker.Stop()
 
 	// Send the message shape repeatedly at 1 Hz.
-	for range ticker.C {
-		msg := buildBandwidthMessage(&lastMu, counters)
-		data, err := json.Marshal(msg)
-		if err != nil {
-			continue
-		}
-		if _, err := ws.Write(data); err != nil {
-			return // client gone
+	for {
+		select {
+		case <-readDone:
+			return // client disconnected
+		case <-ticker.C:
+			msg := buildBandwidthMessage(&lastMu, counters)
+			data, err := json.Marshal(msg)
+			if err != nil {
+				continue
+			}
+			if _, err := ws.Write(data); err != nil {
+				return // client gone
+			}
 		}
 	}
 }

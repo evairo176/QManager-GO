@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strings"
+	"time"
 
 	"qmanager-backend/pkg/speedtest"
 )
@@ -294,12 +295,115 @@ func (s *Server) HandleSpeedtestStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandlePublicOverview returns non-sensitive pre-auth device info
+// HandlePublicOverview returns unauthenticated modem overview data for the
+// landing page. Frontend contract (types/public-overview.ts PublicOverviewOk):
+//   { state:"ok", timestamp, modem_reachable, uptime_seconds,
+//     network:{type, service_status, carrier, bands:[{band,bandwidth_mhz,pci,rsrp,rsrq,sinr}], lte_state, nr_state},
+//     signal:{rsrp,rsrq,sinr}, temperature }
 func (s *Server) HandlePublicOverview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	st := qmReadJSONFile("/tmp/qmanager_status.json")
+	if st == nil || len(st) == 0 {
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"state":   "unavailable",
+			"reason":  "modem_status_unavailable",
+		})
+		return
+	}
+
+	// device section
+	dev, _ := st["device"].(map[string]any)
+	// network section
+	net, _ := st["network"].(map[string]any)
+	// lte / nr sections
+	lte, _ := st["lte"].(map[string]any)
+	nr, _ := st["nr"].(map[string]any)
+
+	networkType := qmStr(net["type"])
+	if networkType == "" {
+		networkType = qmStr(lte["state"]) // fallback
+	}
+	serviceStatus := qmStr(net["service_status"])
+	if serviceStatus == "" {
+		serviceStatus = "optimal"
+	}
+	carrier := qmStr(net["carrier"])
+	lteState := qmStr(lte["state"])
+	if lteState == "" {
+		lteState = "unknown"
+	}
+	nrState := qmStr(nr["state"])
+	if nrState == "" {
+		nrState = "unknown"
+	}
+
+	// Build band list from lte + nr (include when connected)
+	bands := []map[string]interface{}{}
+	if lteState == "connected" || lteState == "registered" {
+		if b := qmStr(lte["band"]); b != "" {
+			bands = append(bands, map[string]interface{}{
+				"band": b, "bandwidth_mhz": qmCfgInt(lte, "bandwidth", 0),
+				"pci": numOrNull(lte["pci"]), "rsrp": numOrNull(lte["rsrp"]),
+				"rsrq": numOrNull(lte["rsrq"]), "sinr": numOrNull(lte["sinr"]),
+			})
+		}
+	}
+	if nrState == "connected" || nrState == "registered" {
+		if b := qmStr(nr["band"]); b != "" {
+			bands = append(bands, map[string]interface{}{
+				"band": b, "bandwidth_mhz": qmCfgInt(nr, "bandwidth", 0),
+				"pci": numOrNull(nr["pci"]), "rsrp": numOrNull(nr["rsrp"]),
+				"rsrq": numOrNull(nr["rsrq"]), "sinr": numOrNull(nr["sinr"]),
+			})
+		}
+	}
+	if bands == nil {
+		bands = []map[string]interface{}{}
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":       true,
-		"system_name":   "QManager RM520N",
-		"auth_required": true,
+		"success":          true,
+		"state":            "ok",
+		"timestamp":        time.Now().Unix(),
+		"modem_reachable":  qmCfgBool(st, "modem_reachable", false),
+		"uptime_seconds":   qmCfgInt(dev, "uptime_seconds", 0),
+		"temperature":      numOrNull(dev["temperature"]),
+		"network": map[string]interface{}{
+			"type":           networkType,
+			"service_status": serviceStatus,
+			"carrier":        carrier,
+			"bands":          bands,
+			"lte_state":      lteState,
+			"nr_state":       nrState,
+		},
+		"signal": map[string]interface{}{
+			"rsrp": numOrNull(lte["rsrp"]),
+			"rsrq": numOrNull(lte["rsrq"]),
+			"sinr": numOrNull(lte["sinr"]),
+		},
 	})
+}
+
+// numOrNull returns the numeric value or nil (JSON null) for absent values.
+func numOrNull(v any) any {
+	if v == nil {
+		return nil
+	}
+	switch t := v.(type) {
+	case float64:
+		return t
+	case int:
+		return t
+	case int64:
+		return t
+	case string:
+		if t == "" {
+			return nil
+		}
+		return t
+	default:
+		return nil
+	}
 }

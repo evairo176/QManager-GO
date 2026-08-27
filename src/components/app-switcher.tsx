@@ -2,11 +2,10 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { ChevronsUpDown, ExternalLink } from "lucide-react";
+import { ChevronsUpDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import QManagerLogo from "@/public/qmanager-logo.svg";
-import OpenWrtLogo from "@/public/openwrt.svg";
 import { authFetch } from "@/lib/auth-fetch";
 import {
   Collapsible,
@@ -17,9 +16,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 
 export function AppSwitcher() {
@@ -67,33 +63,8 @@ export function AppSwitcher() {
             </SidebarMenuButton>
           </CollapsibleTrigger>
 
-          <CollapsibleContent>
-            <SidebarMenuSub>
-              {/* LuCI — opens the advanced OpenWRT UI in a new tab */}
-              <SidebarMenuSubItem>
-                <SidebarMenuSubButton asChild>
-                  <a
-                    href="/cgi-bin/luci"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Image
-                      src={OpenWrtLogo}
-                      alt=""
-                      className="size-4 shrink-0"
-                    />
-                    <span>{t("items.luci")}</span>
-                    <span className="ml-auto inline-flex">
-                      <ExternalLink
-                        className="size-3.5 text-muted-foreground"
-                        aria-label={t("switcher.opens_new_tab")}
-                      />
-                    </span>
-                  </a>
-                </SidebarMenuSubButton>
-              </SidebarMenuSubItem>
-            </SidebarMenuSub>
-          </CollapsibleContent>
+          {/* LuCI link removed — this platform (Quectel systemd) has no OpenWrt
+              LuCI installed; /cgi-bin/luci only opened a duplicate dashboard. */}
         </SidebarMenuItem>
       </Collapsible>
     </SidebarMenu>
