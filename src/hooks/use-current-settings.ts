@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type { CurrentModemSettings } from "@/types/sim-profile";
 
@@ -34,58 +34,24 @@ export function useCurrentSettings(
   /** If true, fetch immediately on mount. Default: false (fetch on demand via refresh). */
   fetchOnMount: boolean = false
 ): UseCurrentSettingsReturn {
-  const [settings, setSettings] = useState<CurrentModemSettings | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const fetchSettings = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery<CurrentModemSettings>({
+    queryKey: ["current-settings"],
+    queryFn: async () => {
       const resp = await authFetch(CGI_ENDPOINT);
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
-
-      const data: CurrentModemSettings = await resp.json();
-      if (!mountedRef.current) return;
-
-      setSettings(data);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to query current modem settings"
-      );
-    } finally {
-      if (mountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (fetchOnMount) {
-      fetchSettings();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchOnMount]);
+      return resp.json() as Promise<CurrentModemSettings>;
+    },
+    enabled: fetchOnMount,
+  });
 
   return {
-    settings,
-    isLoading,
-    error,
-    refresh: fetchSettings,
+    settings: query.data ?? null,
+    isLoading: query.isLoading || query.isPending,
+    error: query.error ? query.error.message : null,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

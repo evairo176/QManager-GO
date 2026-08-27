@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { enterRebootFlow } from "@/lib/reboot";
@@ -45,111 +45,57 @@ export interface UseMbnSettingsReturn {
 
 export function useMbnSettings(): UseMbnSettingsReturn {
   const { t } = useTranslation("errors");
-  const [profiles, setProfiles] = useState<MbnProfile[] | null>(null);
-  const [autoSel, setAutoSel] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Fetch MBN auto-select status + profile list
-  // ---------------------------------------------------------------------------
-  const fetchMbn = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery<MbnSettingsResponse>({
+    queryKey: ["mbn-settings"],
+    queryFn: async () => {
       const resp = await authFetch(CGI_ENDPOINT);
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
 
       const data: MbnSettingsResponse = await resp.json();
-      if (!mountedRef.current) return;
 
       if (!data.success) {
-        setError(resolveErrorMessage(t, data.error, undefined, "Failed to fetch MBN settings"));
-        return;
-      }
-
-      setProfiles(data.profiles);
-      setAutoSel(data.auto_sel);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch MBN settings"
-      );
-    } finally {
-      if (mountedRef.current && !silent) {
-        setIsLoading(false);
-      }
-    }
-  }, [t]);
-
-  // Fetch on mount
-  useEffect(() => {
-    fetchMbn();
-  }, [fetchMbn]);
-
-  // ---------------------------------------------------------------------------
-  // Save MBN change (apply profile or toggle auto-select)
-  // ---------------------------------------------------------------------------
-  const saveMbn = useCallback(
-    async (request: MbnSaveRequest): Promise<boolean> => {
-      setError(null);
-      setIsSaving(true);
-
-      try {
-        const resp = await authFetch(CGI_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(request),
-        });
-
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
-
-        const data: MbnSaveResponse = await resp.json();
-        if (!mountedRef.current) return false;
-
-        if (!data.success) {
-          setError(resolveErrorMessage(t, data.error, data.detail, "Failed to apply MBN settings"));
-          return false;
-        }
-
-        // Silent re-fetch to update local state (no skeleton)
-        await fetchMbn(true);
-        return true;
-      } catch (err) {
-        if (!mountedRef.current) return false;
-        setError(
-          err instanceof Error ? err.message : "Failed to apply MBN settings"
+        throw new Error(
+          resolveErrorMessage(t, data.error, undefined, "Failed to fetch MBN settings")
         );
-        return false;
-      } finally {
-        if (mountedRef.current) {
-          setIsSaving(false);
-        }
       }
-    },
-    [fetchMbn, t]
-  );
 
-  // ---------------------------------------------------------------------------
-  // Reboot device (separate from save — called from reboot dialog)
-  // ---------------------------------------------------------------------------
-  const rebootDevice = useCallback(async (): Promise<boolean> => {
-    try {
+      return data;
+    },
+  });
+
+  const saveMbnMutation = useMutation({
+    mutationFn: async (request: MbnSaveRequest): Promise<boolean> => {
+      const resp = await authFetch(CGI_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      }
+
+      const data: MbnSaveResponse = await resp.json();
+
+      if (!data.success) {
+        throw new Error(
+          resolveErrorMessage(t, data.error, data.detail, "Failed to apply MBN settings")
+        );
+      }
+
+      return true;
+    },
+    onSuccess: () => {
+      // Silent re-fetch to update local state (no skeleton)
+      void query.refetch();
+    },
+  });
+
+  const rebootMutation = useMutation({
+    mutationFn: async (): Promise<boolean> => {
       const resp = await authFetch(CGI_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -165,19 +111,35 @@ export function useMbnSettings(): UseMbnSettingsReturn {
         enterRebootFlow("mbn");
       }
       return data.success;
+    },
+  });
+
+  const saveMbn = async (request: MbnSaveRequest): Promise<boolean> => {
+    try {
+      return await saveMbnMutation.mutateAsync(request);
     } catch {
       return false;
     }
-  }, []);
+  };
+
+  const rebootDevice = async (): Promise<boolean> => {
+    try {
+      return await rebootMutation.mutateAsync();
+    } catch {
+      return false;
+    }
+  };
 
   return {
-    profiles,
-    autoSel,
-    isLoading,
-    isSaving,
-    error,
+    profiles: query.data?.profiles ?? null,
+    autoSel: query.data?.auto_sel ?? null,
+    isLoading: query.isLoading || query.isPending,
+    isSaving: saveMbnMutation.isPending,
+    error: query.error?.message ?? saveMbnMutation.error?.message ?? null,
     saveMbn,
     rebootDevice,
-    refresh: fetchMbn,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

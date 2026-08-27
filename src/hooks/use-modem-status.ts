@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type { ModemStatus } from "@/types/modem-status";
 
@@ -8,7 +8,8 @@ import type { ModemStatus } from "@/types/modem-status";
 // useModemStatus — Polling Hook for QManager Dashboard
 // =============================================================================
 // Fetches the cached modem status JSON from the CGI endpoint at a regular
-// interval. Provides loading/error states and staleness detection.
+// interval using TanStack Query. Provides loading/error states and staleness
+// detection.
 //
 // Usage:
 //   const { data, isLoading, isStale, error, refresh } = useModemStatus();
@@ -50,81 +51,42 @@ export function useModemStatus(
 ): UseModemStatusReturn {
   const { pollInterval = DEFAULT_POLL_INTERVAL, enabled = true } = options;
 
-  const [data, setData] = useState<ModemStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isStale, setIsStale] = useState(false);
-
-  // Use ref to track if the component is mounted (prevent state updates after unmount)
-  const mountedRef = useRef(true);
-  // Use ref for the interval so we can clear it
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const fetchData = useCallback(async () => {
-    try {
+  const query = useQuery<ModemStatus>({
+    queryKey: ["modem-status"],
+    queryFn: async () => {
       const response = await authFetch(FETCH_ENDPOINT);
-
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+      return response.json();
+    },
+    refetchInterval: enabled ? pollInterval : false,
+    enabled,
+  });
 
-      const json: ModemStatus = await response.json();
+  // TanStack Query already keeps previous data on refetch (placeholderData
+  // via keepPreviousData-like behavior is default), so data stays present.
+  const data = query.data ?? null;
 
-      if (!mountedRef.current) return;
+  // Staleness: compare the JSON timestamp to current time.
+  const isStale = data
+    ? Math.floor(Date.now() / 1000) - data.timestamp >
+      STALE_THRESHOLD_SECONDS
+    : true;
 
-      setData(json);
-      setError(null);
+  const error = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to fetch modem status"
+    : null;
 
-      // Check staleness: compare the JSON timestamp to current time
-      const now = Math.floor(Date.now() / 1000);
-      const age = now - json.timestamp;
-      setIsStale(age > STALE_THRESHOLD_SECONDS);
-
-      // Clear loading state after first successful fetch
-      setIsLoading(false);
-    } catch (err) {
-      if (!mountedRef.current) return;
-
-      const message =
-        err instanceof Error ? err.message : "Failed to fetch modem status";
-      setError(message);
-
-      // Don't clear existing data on error — show stale data with error indicator
-      // But do mark as stale
-      setIsStale(true);
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Manual refresh
-  const refresh = useCallback(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // Set up polling
-  useEffect(() => {
-    mountedRef.current = true;
-
-    if (!enabled) {
-      return () => {
-        mountedRef.current = false;
-      };
-    }
-
-    // Fetch immediately on mount
-    fetchData();
-
-    // Set up interval
-    intervalRef.current = setInterval(fetchData, pollInterval);
-
-    return () => {
-      mountedRef.current = false;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [fetchData, pollInterval, enabled]);
-
-  return { data, isLoading, isStale, error, refresh };
+  return {
+    data,
+    isLoading: query.isLoading || query.isPending,
+    isStale,
+    error,
+    refresh: () => {
+      void query.refetch();
+    },
+  };
 }

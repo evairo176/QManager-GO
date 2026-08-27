@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type {
   RadioDetails,
@@ -63,6 +63,12 @@ export interface UseRadioDetailsReturn {
   refresh: () => void;
 }
 
+/** Internal shape carried by the query cache. */
+interface RadioDetailsQueryData {
+  details: RadioDetails;
+  stale: boolean;
+}
+
 /**
  * Parses a numeric-string TA field ("" | "12") into a number or null.
  * Empty string, non-numeric, and negative values resolve to null.
@@ -78,17 +84,9 @@ export function useRadioDetails(
 ): UseRadioDetailsReturn {
   const { pollInterval = DEFAULT_POLL_INTERVAL, enabled = true } = options;
 
-  const [details, setDetails] = useState<RadioDetails | null>(null);
-  const [stale, setStale] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Track mount state so we never setState after unmount.
-  const mountedRef = useRef(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const fetchDetails = useCallback(async () => {
-    try {
+  const query = useQuery<RadioDetailsQueryData>({
+    queryKey: ["radio-details"],
+    queryFn: async () => {
       const response = await authFetch(FETCH_ENDPOINT);
 
       if (!response.ok) {
@@ -99,63 +97,39 @@ export function useRadioDetails(
         | RadioDetailsResponse
         | RadioDetailsErrorResponse = await response.json();
 
-      if (!mountedRef.current) return;
-
       if (!json.success) {
         // Keep the last good details on the screen; surface the error only.
-        setError(json.error || "Failed to fetch radio details");
-        setIsLoading(false);
-        return;
+        // Throwing retains the previous query data (TanStack default).
+        throw new Error(json.error || "Failed to fetch radio details");
       }
 
-      setDetails(json.details);
-      setStale(Boolean(json.stale));
-      setError(null);
-      setIsLoading(false);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      // Don't clear existing details on a transient error — keep showing the
-      // last good values; consumers fall back to the poller snapshot anyway.
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch radio details"
-      );
-      setIsLoading(false);
-    }
-  }, []);
-
-  const refresh = useCallback(() => {
-    fetchDetails();
-  }, [fetchDetails]);
-
-  // Poll only while mounted; stop on unmount.
-  useEffect(() => {
-    mountedRef.current = true;
-
-    if (!enabled) {
-      return () => {
-        mountedRef.current = false;
+      return {
+        details: json.details,
+        stale: Boolean(json.stale),
       };
-    }
+    },
+    refetchInterval: enabled ? pollInterval : false,
+    enabled,
+  });
 
-    fetchDetails();
-    intervalRef.current = setInterval(fetchDetails, pollInterval);
+  const details = query.data?.details ?? null;
+  const stale = query.data?.stale ?? false;
 
-    return () => {
-      mountedRef.current = false;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [fetchDetails, pollInterval, enabled]);
+  const error = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to fetch radio details"
+    : null;
 
   return {
     details,
     stale,
     lteTa: parseTa(details?.lte_ta),
     nrTa: parseTa(details?.nr_ta),
-    isLoading,
+    isLoading: query.isLoading || query.isPending,
     error,
-    refresh,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

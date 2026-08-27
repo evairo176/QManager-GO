@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type { ProfileSummary, ProfileListResponse } from "@/types/sim-profile";
 import {
@@ -13,6 +14,8 @@ const POLL_INTERVAL_MS = 30_000;
 // Recompute the resolved/next-change scenario every minute so the locked badge
 // advances at block boundaries without a network round-trip.
 const TICK_INTERVAL_MS = 60_000;
+
+const QUERY_KEY = ["active-profile"] as const;
 
 export interface UseActiveProfileReturn {
   activeProfile: ProfileSummary | null;
@@ -31,44 +34,31 @@ export interface UseActiveProfileReturn {
 }
 
 export function useActiveProfile(): UseActiveProfileReturn {
-  const [activeProfile, setActiveProfile] = useState<ProfileSummary | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  const mountedRef = useRef(true);
+  const query = useQuery<ProfileSummary | null>({
+    queryKey: QUERY_KEY,
+    queryFn: async () => {
+      // Skip fetch when the tab is hidden — same guard as the original. We
+      // return the last cached value so polling never clears the active
+      // profile just because the tab lost visibility.
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return queryClient.getQueryData<ProfileSummary | null>(QUERY_KEY) ?? null;
+      }
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const fetchActive = useCallback(async () => {
-    if (document.visibilityState === "hidden") return;
-    try {
       const resp = await authFetch(`${CGI_BASE}/list.sh`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
       const data: ProfileListResponse = await resp.json();
-      if (!mountedRef.current) return;
 
       const active = data.active_profile_id
         ? (data.profiles ?? []).find((p) => p.id === data.active_profile_id) ?? null
         : null;
 
-      setActiveProfile(active);
-    } catch {
-      // keep stale data on error
-    } finally {
-      if (mountedRef.current) setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchActive();
-    const id = setInterval(fetchActive, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [fetchActive]);
+      return active;
+    },
+    refetchInterval: POLL_INTERVAL_MS,
+  });
 
   // Minute tick to advance the scheduled-scenario resolution at block edges.
   const [now, setNow] = useState<Date>(() => new Date());
@@ -77,6 +67,7 @@ export function useActiveProfile(): UseActiveProfileReturn {
     return () => clearInterval(id);
   }, []);
 
+  const activeProfile = query.data ?? null;
   const binding = activeProfile?.scenario ?? null;
   const scheduleLocked = !!binding?.schedule.enabled;
 
@@ -93,8 +84,10 @@ export function useActiveProfile(): UseActiveProfileReturn {
   return {
     activeProfile,
     isVerizonActive: activeProfile?.mno === "Verizon",
-    isLoading,
-    refresh: fetchActive,
+    isLoading: query.isLoading || query.isPending,
+    refresh: () => {
+      void query.refetch();
+    },
     scheduleLocked,
     scheduledScenarioId,
     nextChangeAt,

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useMemo, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import type {
@@ -37,34 +38,18 @@ export interface UseScenarioListReturn {
 
 export function useScenarioList(): UseScenarioListReturn {
   const { t } = useTranslation("cellular");
-  const [custom, setCustom] = useState<StoredScenario[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const fetchList = useCallback(async () => {
-    try {
+  const query = useQuery<ScenarioListResponse>({
+    queryKey: ["scenario-list"],
+    queryFn: async () => {
       const resp = await authFetch(`${CGI_BASE}/list.sh`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data: ScenarioListResponse = await resp.json();
-      if (!mountedRef.current) return;
-      setCustom(data.scenarios || []);
-    } catch {
-      // Keep defaults-only on failure; the picker still works.
-    } finally {
-      if (mountedRef.current) setIsLoading(false);
-    }
-  }, []);
+      return resp.json();
+    },
+  });
 
-  useEffect(() => {
-    fetchList();
-  }, [fetchList]);
+  // Keep defaults-only on failure; the picker still works.
+  const custom: StoredScenario[] = query.data?.scenarios || [];
 
   // Memoized so the array identity is stable across renders. Without this the
   // list rebuilt every render, giving nameForId — and every value derived from
@@ -92,8 +77,10 @@ export function useScenarioList(): UseScenarioListReturn {
 
   return {
     scenarios,
-    isLoading,
+    isLoading: query.isLoading || query.isPending,
     nameForId,
-    refresh: fetchList,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

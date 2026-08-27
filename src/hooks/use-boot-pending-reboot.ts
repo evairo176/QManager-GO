@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import { requestRebootLater } from "@/lib/reboot";
 
@@ -13,35 +13,30 @@ interface PendingRebootResponse {
 /**
  * Polls the backend once on app load for any boot-emitted pending-reboot flags.
  * The CGI clears its own flags on read (clear-on-read), so this is a
- * fire-once effect per boot cycle.
+ * fire-once query per boot cycle.
  *
  * Call this hook inside a top-level authenticated client component so it runs
- * once the user session is established. The ref guard prevents re-fire on
- * subsequent navigations or React Strict Mode double-invoke.
+ * once the user session is established. TanStack Query's cache-keying
+ * (["boot-pending-reboot"]) prevents re-fire on subsequent navigations or
+ * React Strict Mode double-invoke — the queryFn runs only once per cache
+ * entry, and a successful read clears the backend flag.
  */
 export function useBootPendingReboot(): void {
-  const fired = useRef(false);
-
-  useEffect(() => {
-    if (fired.current) return;
-    fired.current = true;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const resp = await authFetch(ENDPOINT);
-        if (!resp.ok || cancelled) return;
-        const data = (await resp.json()) as PendingRebootResponse;
-        if (data.verizon) {
-          requestRebootLater("verizon_revert");
-        }
-      } catch {
-        // Network or auth failure — silently ignore, banner is best-effort
+  useQuery({
+    queryKey: ["boot-pending-reboot"],
+    queryFn: async () => {
+      const resp = await authFetch(ENDPOINT);
+      if (!resp.ok) return null;
+      const data = (await resp.json()) as PendingRebootResponse;
+      if (data.verizon) {
+        requestRebootLater("verizon_revert");
       }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      return data;
+    },
+    // The CGI is clear-on-read: never re-run this in the same session, and
+    // don't retry on failure — the banner is best-effort.
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: false,
+  });
 }

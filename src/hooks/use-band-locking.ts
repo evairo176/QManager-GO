@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useRef, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -36,6 +37,8 @@ import { bandArrayToString } from "@/types/band-locking";
 
 const CGI_BASE = "/cgi-bin/quecmanager/bands";
 const FAILOVER_POLL_INTERVAL = 1000; // 1s — watcher sleeps 5s then checks
+
+const QUERY_KEY = ["band-locking"] as const;
 
 export interface UseBandLockingReturn {
   /** Currently locked/configured bands from the per-category band registers */
@@ -75,73 +78,33 @@ export interface UseBandLockingReturn {
 
 export function useBandLocking(): UseBandLockingReturn {
   const { t } = useTranslation("errors");
-  const [currentBands, setCurrentBands] = useState<CurrentBands | null>(null);
-  const [failover, setFailover] = useState<FailoverState>({
-    enabled: false,
-    activated: false,
-  });
-  const [isLoading, setIsLoading] = useState(true);
-  const [lockingCategory, setLockingCategory] = useState<BandCategory | null>(
-    null,
-  );
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const [lockingCategory, setLockingCategory] = useState<BandCategory | null>(null);
 
-  const mountedRef = useRef(true);
-  const failoverPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      // Clean up any running failover poll on unmount
-      if (failoverPollRef.current) {
-        clearInterval(failoverPollRef.current);
-        failoverPollRef.current = null;
-      }
-    };
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Fetch current locked bands + failover state (full — touches modem)
-  // ---------------------------------------------------------------------------
-  const fetchCurrent = useCallback(async () => {
-    try {
+  const query = useQuery<BandCurrentResponse>({
+    queryKey: QUERY_KEY,
+    queryFn: async () => {
       const resp = await authFetch(`${CGI_BASE}/current.sh?_t=${Date.now()}`);
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
 
       const data: BandCurrentResponse = await resp.json();
-      if (!mountedRef.current) return;
 
       if (!data.success) {
-        setError(
-          resolveErrorMessage(t, data.error, data.detail, "Failed to fetch band configuration"),
+        throw new Error(
+          resolveErrorMessage(t, data.error, data.detail, "Failed to fetch band configuration")
         );
-        return;
       }
 
-      setCurrentBands(data.current);
-      setFailover(data.failover);
-      setError(null);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to fetch band configuration",
-      );
-    } finally {
-      if (mountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, [t]);
+      return data;
+    },
+  });
 
-  // Initial fetch
-  useEffect(() => {
-    fetchCurrent();
-  }, [fetchCurrent]);
+  // Keep a ref to the latest query so the interval callback always refetches
+  // the freshest instance (avoids stale closures).
+  const queryRef = useRef(query);
+  queryRef.current = query;
 
   // ---------------------------------------------------------------------------
   // Failover status polling (lightweight — no modem contact)
@@ -152,188 +115,179 @@ export function useBandLocking(): UseBandLockingReturn {
   //   - If activated → re-fetches current.sh to get the reset bands
   //   - Stops polling
   // ---------------------------------------------------------------------------
-  const startFailoverPolling = useCallback(() => {
-    // Clear any existing poll
+  const failoverPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopFailoverPolling = () => {
     if (failoverPollRef.current) {
       clearInterval(failoverPollRef.current);
       failoverPollRef.current = null;
     }
+  };
 
+  const startFailoverPolling = () => {
+    stopFailoverPolling();
     failoverPollRef.current = setInterval(async () => {
-      if (!mountedRef.current) {
-        if (failoverPollRef.current) {
-          clearInterval(failoverPollRef.current);
-          failoverPollRef.current = null;
-        }
-        return;
-      }
-
       try {
         const resp = await authFetch(`${CGI_BASE}/failover_status.sh`);
         if (!resp.ok) return; // Silent fail — retry next interval
 
         const data: FailoverStatusResponse = await resp.json();
-        if (!mountedRef.current) return;
 
         // Watcher still running — keep polling
         if (data.watcher_running) return;
 
         // Watcher finished — stop polling and update state
-        if (failoverPollRef.current) {
-          clearInterval(failoverPollRef.current);
-          failoverPollRef.current = null;
-        }
+        stopFailoverPolling();
 
-        setFailover({ enabled: data.enabled, activated: data.activated });
+        const failover: FailoverState = {
+          enabled: data.enabled,
+          activated: data.activated,
+        };
+        queryClient.setQueryData<BandCurrentResponse>(QUERY_KEY, (prev) =>
+          prev ? { ...prev, failover } : prev
+        );
 
         // If failover activated, bands were reset — re-fetch to get new values
         if (data.activated) {
-          await fetchCurrent();
+          void queryRef.current.refetch();
         }
       } catch {
         // Network error — silent, retry next interval
       }
     }, FAILOVER_POLL_INTERVAL);
-  }, [fetchCurrent]);
+  };
 
-  // ---------------------------------------------------------------------------
-  // Lock bands for one category
-  // ---------------------------------------------------------------------------
-  const lockBands = useCallback(
-    async (category: BandCategory, bands: number[]): Promise<boolean> => {
+  const lockMutation = useMutation({
+    mutationFn: async (args: {
+      category: BandCategory;
+      bands: number[];
+    }): Promise<boolean> => {
+      const { category, bands } = args;
       if (bands.length === 0) {
-        setError("No bands selected");
-        return false;
+        throw new Error("No bands selected");
       }
 
-      setError(null);
-      setLockingCategory(category);
+      const resp = await authFetch(`${CGI_BASE}/lock.sh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          band_type: category,
+          bands: bandArrayToString(bands),
+        }),
+      });
 
-      try {
-        const resp = await authFetch(`${CGI_BASE}/lock.sh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            band_type: category,
-            bands: bandArrayToString(bands),
-          }),
-        });
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      }
 
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
+      const data: BandLockResponse = await resp.json();
 
-        const data: BandLockResponse = await resp.json();
-        if (!mountedRef.current) return false;
-
-        if (!data.success) {
-          setError(resolveErrorMessage(t, data.error, data.detail, "Failed to apply band lock"));
-          return false;
-        }
-
-        // Re-fetch current state to confirm the lock took effect
-        await fetchCurrent();
-
-        // If failover is armed (enabled + watcher spawned), start polling
-        // for watcher completion so we detect activation in real-time
-        if (data.failover_armed) {
-          // Clear any previous activated flag from UI — watcher just started fresh
-          setFailover((prev) => ({ ...prev, activated: false }));
-          startFailoverPolling();
-        }
-
-        return true;
-      } catch (err) {
-        if (!mountedRef.current) return false;
-        setError(
-          err instanceof Error ? err.message : "Failed to apply band lock",
+      if (!data.success) {
+        throw new Error(
+          resolveErrorMessage(t, data.error, data.detail, "Failed to apply band lock")
         );
-        return false;
-      } finally {
-        if (mountedRef.current) {
-          setLockingCategory(null);
-        }
-      }
-    },
-    [fetchCurrent, startFailoverPolling, t],
-  );
-
-  // ---------------------------------------------------------------------------
-  // Unlock all bands for one category (set to full supported list)
-  // ---------------------------------------------------------------------------
-  const unlockAll = useCallback(
-    async (
-      category: BandCategory,
-      supportedBands: number[],
-    ): Promise<boolean> => {
-      if (supportedBands.length === 0) {
-        setError("Supported bands not available");
-        return false;
       }
 
-      // Locking to ALL supported bands = unlock all
-      return lockBands(category, supportedBands);
-    },
-    [lockBands],
-  );
+      // Re-fetch current state to confirm the lock took effect
+      await queryRef.current.refetch();
 
-  // ---------------------------------------------------------------------------
-  // Toggle failover
-  // ---------------------------------------------------------------------------
-  const toggleFailover = useCallback(
-    async (enabled: boolean): Promise<boolean> => {
-      setError(null);
-
-      try {
-        const resp = await authFetch(`${CGI_BASE}/failover_toggle.sh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enabled }),
-        });
-
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
-
-        const data: FailoverToggleResponse = await resp.json();
-        if (!mountedRef.current) return false;
-
-        if (!data.success) {
-          setError(resolveErrorMessage(t, data.error, data.detail, "Failed to toggle failover"));
-          return false;
-        }
-
-        // Optimistic update
-        setFailover((prev) => ({ ...prev, enabled: data.enabled ?? enabled }));
-        return true;
-      } catch (err) {
-        if (!mountedRef.current) return false;
-        setError(
-          err instanceof Error ? err.message : "Failed to toggle failover",
+      // If failover is armed (enabled + watcher spawned), start polling
+      // for watcher completion so we detect activation in real-time
+      if (data.failover_armed) {
+        // Clear any previous activated flag from UI — watcher just started fresh
+        queryClient.setQueryData<BandCurrentResponse>(QUERY_KEY, (prev) =>
+          prev
+            ? { ...prev, failover: { ...prev.failover, activated: false } }
+            : prev
         );
-        return false;
+        startFailoverPolling();
       }
-    },
-    [t],
-  );
 
-  // ---------------------------------------------------------------------------
-  // Manual refresh
-  // ---------------------------------------------------------------------------
-  const refresh = useCallback(() => {
-    setIsLoading(true);
-    fetchCurrent();
-  }, [fetchCurrent]);
+      return true;
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async (enabled: boolean): Promise<boolean> => {
+      const resp = await authFetch(`${CGI_BASE}/failover_toggle.sh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      }
+
+      const data: FailoverToggleResponse = await resp.json();
+
+      if (!data.success) {
+        throw new Error(
+          resolveErrorMessage(t, data.error, data.detail, "Failed to toggle failover")
+        );
+      }
+
+      // Optimistic update
+      queryClient.setQueryData<BandCurrentResponse>(QUERY_KEY, (prev) =>
+        prev
+          ? {
+              ...prev,
+              failover: { ...prev.failover, enabled: data.enabled ?? enabled },
+            }
+          : prev
+      );
+      return true;
+    },
+  });
+
+  const lockBands = async (
+    category: BandCategory,
+    bands: number[]
+  ): Promise<boolean> => {
+    setLockingCategory(category);
+    try {
+      return await lockMutation.mutateAsync({ category, bands });
+    } catch {
+      return false;
+    } finally {
+      setLockingCategory(null);
+    }
+  };
+
+  const unlockAll = async (
+    category: BandCategory,
+    supportedBands: number[],
+  ): Promise<boolean> => {
+    if (supportedBands.length === 0) {
+      return false;
+    }
+    // Locking to ALL supported bands = unlock all
+    return lockBands(category, supportedBands);
+  };
+
+  const toggleFailover = async (enabled: boolean): Promise<boolean> => {
+    try {
+      return await toggleMutation.mutateAsync(enabled);
+    } catch {
+      return false;
+    }
+  };
 
   return {
-    currentBands,
-    failover,
-    isLoading,
+    currentBands: query.data?.current ?? null,
+    failover: query.data?.failover ?? { enabled: false, activated: false },
+    isLoading: query.isLoading || query.isPending,
     lockingCategory,
-    error,
+    error:
+      query.error?.message ??
+      lockMutation.error?.message ??
+      toggleMutation.error?.message ??
+      null,
     lockBands,
     unlockAll,
     toggleFailover,
-    refresh,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

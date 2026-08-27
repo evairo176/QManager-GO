@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -14,100 +15,97 @@ const API_URL = "/cgi-bin/quecmanager/network/video_optimizer.sh";
 
 export function useTrafficMasquerade() {
   const { t } = useTranslation("errors");
-  const [settings, setSettings] = useState<TrafficMasqueradeSettings | null>(
-    null
-  );
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const fetchSettings = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await authFetch(`${API_URL}?section=masquerade`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const data: TrafficMasqueradeResponse = await response.json();
-      if (!mountedRef.current) return;
-
-      if (!data.success) {
-        setError("Failed to load settings");
-        return;
-      }
-
-      setSettings({
-        enabled: data.enabled,
-        other_enabled: data.other_enabled,
-        status: data.status,
-        uptime: data.uptime,
-        packets_processed: data.packets_processed,
-        sni_domain: data.sni_domain,
-        binary_installed: data.binary_installed,
-        kernel_module_loaded: data.kernel_module_loaded,
-      });
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to fetch settings");
-    } finally {
-      if (mountedRef.current && !silent) setIsLoading(false);
-    }
-  }, []);
-
-  const saveSettings = useCallback(
-    async (enabled: boolean, sniDomain: string): Promise<boolean> => {
-      setIsSaving(true);
-      setError(null);
-
-      try {
-        const response = await authFetch(API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "save_masquerade",
-            enabled,
-            sni_domain: sniDomain,
-          }),
-        });
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
-        if (!data.success) {
-          setError(resolveErrorMessage(t, undefined, data.detail, "Failed to save settings"));
-          return false;
-        }
-
-        await fetchSettings(true);
-        return true;
-      } catch (err) {
-        if (mountedRef.current) {
-          setError(
-            err instanceof Error ? err.message : "Failed to save settings"
-          );
-        }
-        return false;
-      } finally {
-        if (mountedRef.current) setIsSaving(false);
-      }
-    },
-    [fetchSettings, t]
-  );
-
+  const [isUninstalling, setIsUninstalling] = useState(false);
   const [testResult, setTestResult] = useState<MasqueradeTestResult>({
     status: "idle",
   });
 
-  const runTest = useCallback(async () => {
+  const query = useQuery<TrafficMasqueradeResponse>({
+    queryKey: ["traffic-masquerade"],
+    queryFn: async () => {
+      const response = await authFetch(`${API_URL}?section=masquerade`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    },
+    // Poll for live stats while service is running
+    refetchInterval: (q) =>
+      (q.state.data as TrafficMasqueradeResponse | undefined)?.status === "running"
+        ? 1000
+        : false,
+  });
+
+  const data = query.data;
+  const settings: TrafficMasqueradeSettings | null =
+    data && data.success
+      ? {
+          enabled: data.enabled,
+          other_enabled: data.other_enabled,
+          status: data.status,
+          uptime: data.uptime,
+          packets_processed: data.packets_processed,
+          sni_domain: data.sni_domain,
+          binary_installed: data.binary_installed,
+          kernel_module_loaded: data.kernel_module_loaded,
+        }
+      : null;
+
+  const error = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to fetch settings"
+    : data && !data.success
+      ? "Failed to load settings"
+      : null;
+
+  const saveMutation = useMutation({
+    mutationFn: async ({
+      enabled,
+      sniDomain,
+    }: {
+      enabled: boolean;
+      sniDomain: string;
+    }): Promise<boolean> => {
+      const response = await authFetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_masquerade",
+          enabled,
+          sni_domain: sniDomain,
+        }),
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(
+          resolveErrorMessage(t, undefined, data.detail, "Failed to save settings"),
+        );
+      }
+      return true;
+    },
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
+
+  const saveSettings = async (
+    enabled: boolean,
+    sniDomain: string,
+  ): Promise<boolean> => {
+    setIsSaving(true);
+    try {
+      return await saveMutation.mutateAsync({ enabled, sniDomain });
+    } catch {
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const runTest = async () => {
     setTestResult({ status: "running" });
 
     try {
@@ -119,8 +117,6 @@ export function useTrafficMasquerade() {
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-
-      if (!mountedRef.current) return;
 
       if (!data.success) {
         setTestResult({
@@ -137,43 +133,15 @@ export function useTrafficMasquerade() {
         message: data.message,
       });
     } catch (err) {
-      if (!mountedRef.current) return;
       setTestResult({
         status: "error",
         error: err instanceof Error ? err.message : "Test failed",
       });
     }
-  }, []);
+  };
 
-  useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
-
-  // Poll for live stats while service is running
-  const statsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    if (statsPollRef.current) {
-      clearInterval(statsPollRef.current);
-      statsPollRef.current = null;
-    }
-
-    if (settings?.status === "running") {
-      statsPollRef.current = setInterval(() => fetchSettings(true), 1000);
-    }
-
-    return () => {
-      if (statsPollRef.current) {
-        clearInterval(statsPollRef.current);
-      }
-    };
-  }, [settings?.status, fetchSettings]);
-
-  const [isUninstalling, setIsUninstalling] = useState(false);
-
-  const runUninstall = useCallback(async (): Promise<boolean> => {
-    setIsUninstalling(true);
-    try {
+  const uninstallMutation = useMutation({
+    mutationFn: async (): Promise<boolean> => {
       const response = await authFetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -182,24 +150,31 @@ export function useTrafficMasquerade() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       if (!data.success) {
-        setError(resolveErrorMessage(t, undefined, data.detail, "Failed to uninstall"));
-        return false;
+        throw new Error(
+          resolveErrorMessage(t, undefined, data.detail, "Failed to uninstall"),
+        );
       }
-      await fetchSettings(true);
       return true;
-    } catch (err) {
-      if (mountedRef.current) {
-        setError(err instanceof Error ? err.message : "Failed to uninstall");
-      }
+    },
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
+
+  const runUninstall = async (): Promise<boolean> => {
+    setIsUninstalling(true);
+    try {
+      return await uninstallMutation.mutateAsync();
+    } catch {
       return false;
     } finally {
-      if (mountedRef.current) setIsUninstalling(false);
+      setIsUninstalling(false);
     }
-  }, [fetchSettings, t]);
+  };
 
   return {
     settings,
-    isLoading,
+    isLoading: query.isLoading || query.isPending,
     isSaving,
     isUninstalling,
     error,
@@ -207,6 +182,8 @@ export function useTrafficMasquerade() {
     testResult,
     runTest,
     runUninstall,
-    refresh: fetchSettings,
+    refresh: (..._args: unknown[]) => {
+      void query.refetch();
+    },
   };
 }

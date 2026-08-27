@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import i18next from "i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -77,170 +78,170 @@ export interface ProfileFormData {
 }
 
 export function useSimProfiles(): UseSimProfilesReturn {
-  const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
-  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
   // Fetch profile list
   // ---------------------------------------------------------------------------
-  const fetchProfiles = useCallback(async () => {
-    try {
+
+  const query = useQuery<ProfileListResponse>({
+    queryKey: ["sim-profiles"],
+    queryFn: async () => {
       const resp = await authFetch(`${CGI_BASE}/list.sh`);
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
+      return resp.json();
+    },
+  });
 
-      const data: ProfileListResponse = await resp.json();
-      if (!mountedRef.current) return;
+  const profiles = query.data?.profiles || [];
+  const activeProfileId = query.data?.active_profile_id || null;
 
-      setProfiles(data.profiles || []);
-      setActiveProfileId(data.active_profile_id || null);
-      setError(null);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        err instanceof Error ? err.message : "Failed to load profiles"
-      );
-    } finally {
-      if (mountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  // Initial load
-  useEffect(() => {
-    fetchProfiles();
-  }, [fetchProfiles]);
+  const error = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to load profiles"
+    : localError;
 
   // ---------------------------------------------------------------------------
   // Create profile
   // ---------------------------------------------------------------------------
-  const createProfile = useCallback(
-    async (data: ProfileFormData): Promise<string | null> => {
-      setError(null);
-      try {
-        const resp = await authFetch(`${CGI_BASE}/save.sh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        });
 
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
+  const createMutation = useMutation({
+    mutationFn: async (data: ProfileFormData): Promise<string | null> => {
+      const resp = await authFetch(`${CGI_BASE}/save.sh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
 
-        const result: ProfileApiResponse = await resp.json();
-
-        if (!result.success) {
-          setError(result.detail || result.error || "Failed to create profile");
-          return null;
-        }
-
-        // Refresh the list to pick up the new profile
-        await fetchProfiles();
-        return result.id || null;
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "Failed to create profile";
-        setError(msg);
-        return null;
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
+
+      const result: ProfileApiResponse = await resp.json();
+
+      if (!result.success) {
+        throw new Error(result.detail || result.error || "Failed to create profile");
+      }
+
+      return result.id || null;
     },
-    [fetchProfiles]
-  );
+    onSuccess: () => {
+      // Refresh the list to pick up the new profile
+      void query.refetch();
+    },
+  });
+
+  const createProfile = async (data: ProfileFormData): Promise<string | null> => {
+    setLocalError(null);
+    try {
+      return await createMutation.mutateAsync(data);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to create profile";
+      setLocalError(msg);
+      return null;
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // Update profile
   // ---------------------------------------------------------------------------
-  const updateProfile = useCallback(
-    async (id: string, data: ProfileFormData): Promise<boolean> => {
-      setError(null);
-      try {
-        // Include the existing ID so profile_save() knows it's an update
-        const payload = { ...data, id };
-        const resp = await authFetch(`${CGI_BASE}/save.sh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
 
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
+  const updateMutation = useMutation({
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: ProfileFormData;
+    }): Promise<boolean> => {
+      // Include the existing ID so profile_save() knows it's an update
+      const payload = { ...data, id };
+      const resp = await authFetch(`${CGI_BASE}/save.sh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-        const result: ProfileApiResponse = await resp.json();
-
-        if (!result.success) {
-          setError(result.detail || result.error || "Failed to update profile");
-          return false;
-        }
-
-        await fetchProfiles();
-        return true;
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "Failed to update profile";
-        setError(msg);
-        return false;
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
+
+      const result: ProfileApiResponse = await resp.json();
+
+      if (!result.success) {
+        throw new Error(result.detail || result.error || "Failed to update profile");
+      }
+
+      return true;
     },
-    [fetchProfiles]
-  );
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
+
+  const updateProfile = async (id: string, data: ProfileFormData): Promise<boolean> => {
+    setLocalError(null);
+    try {
+      return await updateMutation.mutateAsync({ id, data });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to update profile";
+      setLocalError(msg);
+      return false;
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // Delete profile
   // ---------------------------------------------------------------------------
-  const deleteProfile = useCallback(
-    async (id: string): Promise<boolean> => {
-      setError(null);
-      try {
-        const resp = await authFetch(`${CGI_BASE}/delete.sh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id }),
-        });
 
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string): Promise<boolean> => {
+      const resp = await authFetch(`${CGI_BASE}/delete.sh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
 
-        const result: ProfileApiResponse = await resp.json();
-
-        if (!result.success) {
-          setError(result.detail || result.error || "Failed to delete profile");
-          return false;
-        }
-
-        await fetchProfiles();
-        return true;
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "Failed to delete profile";
-        setError(msg);
-        return false;
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
+
+      const result: ProfileApiResponse = await resp.json();
+
+      if (!result.success) {
+        throw new Error(result.detail || result.error || "Failed to delete profile");
+      }
+
+      return true;
     },
-    [fetchProfiles]
-  );
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
+
+  const deleteProfile = async (id: string): Promise<boolean> => {
+    setLocalError(null);
+    try {
+      return await deleteMutation.mutateAsync(id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to delete profile";
+      setLocalError(msg);
+      return false;
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // Deactivate active profile
   // ---------------------------------------------------------------------------
-  const deactivateProfile = useCallback(async (): Promise<{ success: boolean; requiresReboot: boolean }> => {
-    setError(null);
-    try {
+
+  const deactivateMutation = useMutation({
+    mutationFn: async (): Promise<{
+      success: boolean;
+      requiresReboot: boolean;
+    }> => {
       const resp = await authFetch(`${CGI_BASE}/deactivate.sh`, {
         method: "POST",
       });
@@ -249,10 +250,11 @@ export function useSimProfiles(): UseSimProfilesReturn {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
 
-      const result: ProfileApiResponse & { requires_reboot?: boolean } = await resp.json();
+      const result: ProfileApiResponse & { requires_reboot?: boolean } =
+        await resp.json();
 
       if (!result.success) {
-        setError(
+        throw new Error(
           resolveErrorMessage(
             i18next.t.bind(i18next),
             result.error,
@@ -260,62 +262,71 @@ export function useSimProfiles(): UseSimProfilesReturn {
             "Failed to deactivate profile",
           ),
         );
-        return { success: false, requiresReboot: false };
       }
 
-      await fetchProfiles();
       return { success: true, requiresReboot: result.requires_reboot === true };
+    },
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
+
+  const deactivateProfile = async (): Promise<{
+    success: boolean;
+    requiresReboot: boolean;
+  }> => {
+    setLocalError(null);
+    try {
+      return await deactivateMutation.mutateAsync();
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Failed to deactivate profile";
-      setError(msg);
+      setLocalError(msg);
       return { success: false, requiresReboot: false };
     }
-  }, [fetchProfiles]);
+  };
 
   // ---------------------------------------------------------------------------
   // Get single profile (for edit form)
   // ---------------------------------------------------------------------------
-  const getProfile = useCallback(
-    async (id: string): Promise<SimProfile | null> => {
-      try {
-        const resp = await authFetch(`${CGI_BASE}/get.sh?id=${encodeURIComponent(id)}`);
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
 
-        const data = await resp.json();
+  const getProfile = async (id: string): Promise<SimProfile | null> => {
+    try {
+      const resp = await authFetch(`${CGI_BASE}/get.sh?id=${encodeURIComponent(id)}`);
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      }
 
-        // The get endpoint returns the full profile on success,
-        // or { success: false, error: "..." } on failure.
-        if (data.success === false) {
-          setError(data.detail || data.error || "Profile not found");
-          return null;
-        }
+      const data = await resp.json();
 
-        return data as SimProfile;
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "Failed to load profile";
-        setError(msg);
+      // The get endpoint returns the full profile on success,
+      // or { success: false, error: "..." } on failure.
+      if (data.success === false) {
+        const msg = data.detail || data.error || "Profile not found";
+        setLocalError(msg);
         return null;
       }
-    },
-    []
-  );
+
+      return data as SimProfile;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load profile";
+      setLocalError(msg);
+      return null;
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // Manual refresh
   // ---------------------------------------------------------------------------
-  const refresh = useCallback(() => {
-    setIsLoading(true);
-    fetchProfiles();
-  }, [fetchProfiles]);
+
+  const refresh = () => {
+    void query.refetch();
+  };
 
   return {
     profiles,
     activeProfileId,
-    isLoading,
+    isLoading: query.isLoading || query.isPending,
     error,
     createProfile,
     updateProfile,

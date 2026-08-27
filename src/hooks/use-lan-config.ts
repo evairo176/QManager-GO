@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -68,79 +69,38 @@ export interface UseLanConfigReturn {
   saveLanConfig: (ipaddr: string, prefix: number) => Promise<SaveLanConfigResult>;
 }
 
+type SaveMutationResult = SaveLanConfigResult & { applied?: LanApplied };
+
 export function useLanConfig(): UseLanConfigReturn {
   const { t } = useTranslation("errors");
-  const [data, setData] = useState<LanConfigStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
   const [applied, setApplied] = useState<LanApplied | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Fetch current LAN config
-  // ---------------------------------------------------------------------------
-  const fetchConfig = useCallback(
-    async (silent = false): Promise<void> => {
-      if (!silent) setIsLoading(true);
-      setError(null);
-
-      try {
-        const resp = await authFetch(CGI_ENDPOINT);
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
-
-        const json = await resp.json();
-        if (!mountedRef.current) return;
-
-        if (!json.success) {
-          setError(
-            resolveErrorMessage(
-              t,
-              json.error,
-              json.detail,
-              "Failed to fetch LAN settings",
-            ),
-          );
-          return;
-        }
-
-        setData(json as LanConfigStatus);
-      } catch (err) {
-        if (!mountedRef.current) return;
-        setError(
-          err instanceof Error ? err.message : "Failed to fetch LAN settings",
-        );
-      } finally {
-        if (mountedRef.current && !silent) {
-          setIsLoading(false);
-        }
+  const query = useQuery<LanConfigStatus>({
+    queryKey: ["lan-config"],
+    queryFn: async () => {
+      const resp = await authFetch(CGI_ENDPOINT);
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
+
+      const json = await resp.json();
+
+      if (!json.success) {
+        throw new Error(
+          resolveErrorMessage(t, json.error, json.detail, "Failed to fetch LAN settings")
+        );
+      }
+
+      return json as LanConfigStatus;
     },
-    [t],
-  );
+  });
 
-  // Fetch on mount
-  useEffect(() => {
-    fetchConfig();
-  }, [fetchConfig]);
-
-  // ---------------------------------------------------------------------------
-  // Save LAN config
-  // ---------------------------------------------------------------------------
-  const saveLanConfig = useCallback(
-    async (ipaddr: string, prefix: number): Promise<SaveLanConfigResult> => {
-      setError(null);
-      setIsSaving(true);
+  const saveMutation = useMutation({
+    mutationFn: async (args: {
+      ipaddr: string;
+      prefix: number;
+    }): Promise<SaveMutationResult> => {
+      const { ipaddr, prefix } = args;
 
       let resp: Response;
       try {
@@ -152,10 +112,6 @@ export function useLanConfig(): UseLanConfigReturn {
       } catch (err) {
         const detail =
           err instanceof Error ? err.message : "Failed to save LAN settings";
-        if (mountedRef.current) {
-          setError(detail);
-          setIsSaving(false);
-        }
         return { success: false, errorDetail: detail };
       }
 
@@ -165,17 +121,6 @@ export function useLanConfig(): UseLanConfigReturn {
           json = await resp.json();
         } catch {
           // ignore parse error
-        }
-        if (mountedRef.current) {
-          setError(
-            resolveErrorMessage(
-              t,
-              json?.error,
-              json?.detail,
-              `HTTP ${resp.status}: ${resp.statusText}`,
-            ),
-          );
-          setIsSaving(false);
         }
         return {
           success: false,
@@ -188,25 +133,10 @@ export function useLanConfig(): UseLanConfigReturn {
       try {
         json = await resp.json();
       } catch {
-        if (mountedRef.current) {
-          setError("Failed to parse save response");
-          setIsSaving(false);
-        }
         return { success: false };
       }
 
       if (!json.success) {
-        if (mountedRef.current) {
-          setError(
-            resolveErrorMessage(
-              t,
-              json.error,
-              json.detail,
-              "Failed to save LAN settings",
-            ),
-          );
-          setIsSaving(false);
-        }
         return {
           success: false,
           errorCode: json.error,
@@ -217,27 +147,50 @@ export function useLanConfig(): UseLanConfigReturn {
       // --- Success: the reload is armed; the old origin is about to die. -------
       // Do NOT poll — flip straight to the applied state. The card shows a
       // persistent banner with the new address.
-      if (mountedRef.current) {
-        setIsSaving(false);
-        setApplied({
+      return {
+        success: true,
+        applied: {
           newIpaddr: json.new_ipaddr ?? ipaddr,
           prefix: json.prefix ?? prefix,
           windowSeconds: json.disconnect_window_seconds ?? 15,
           carrierBounce: json.carrier_bounce ?? false,
-        });
-      }
-      return { success: true };
+        },
+      };
     },
-    [t],
-  );
+    onSuccess: (result) => {
+      if (result.applied) {
+        setApplied(result.applied);
+      }
+    },
+  });
+
+  const saveLanConfig = async (
+    ipaddr: string,
+    prefix: number
+  ): Promise<SaveLanConfigResult> => {
+    try {
+      const result = await saveMutation.mutateAsync({ ipaddr, prefix });
+      return {
+        success: result.success,
+        errorCode: result.errorCode,
+        errorDetail: result.errorDetail,
+      };
+    } catch {
+      return { success: false };
+    }
+  };
+
+  const refresh = async (): Promise<void> => {
+    await query.refetch();
+  };
 
   return {
-    data,
-    isLoading,
-    isSaving,
+    data: query.data ?? null,
+    isLoading: query.isLoading || query.isPending,
+    isSaving: saveMutation.isPending,
     applied,
-    error,
-    refresh: fetchConfig,
+    error: query.error?.message ?? saveMutation.error?.message ?? null,
+    refresh,
     saveLanConfig,
   };
 }

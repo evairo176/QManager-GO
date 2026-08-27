@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -15,10 +16,8 @@ const API_URL = "/cgi-bin/quecmanager/network/video_optimizer.sh";
 
 export function useVideoOptimizer() {
   const { t } = useTranslation("errors");
-  const [settings, setSettings] = useState<VideoOptimizerSettings | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isUninstalling, setIsUninstalling] = useState(false);
   const [verifyResult, setVerifyResult] = useState<VerifyResult>({
     success: true,
     status: "idle",
@@ -27,241 +26,210 @@ export function useVideoOptimizer() {
     success: true,
     status: "idle",
   });
-  const mountedRef = useRef(true);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const installPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [verifyPolling, setVerifyPolling] = useState(false);
+  const [installPolling, setInstallPolling] = useState(false);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-      }
-      if (installPollRef.current) {
-        clearInterval(installPollRef.current);
-      }
-    };
-  }, []);
-
-  const fetchSettings = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery<VideoOptimizerResponse>({
+    queryKey: ["video-optimizer"],
+    queryFn: async () => {
       const response = await authFetch(API_URL);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const data: VideoOptimizerResponse = await response.json();
-      if (!mountedRef.current) return;
-
-      if (!data.success) {
-        setError("Failed to load settings");
-        return;
-      }
-
-      setSettings({
-        enabled: data.enabled,
-        other_enabled: data.other_enabled,
-        status: data.status,
-        uptime: data.uptime,
-        packets_processed: data.packets_processed,
-        domains_loaded: data.domains_loaded,
-        desync_repeats: data.desync_repeats,
-        binary_installed: data.binary_installed,
-        kernel_module_loaded: data.kernel_module_loaded,
-      });
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to fetch settings");
-    } finally {
-      if (mountedRef.current && !silent) setIsLoading(false);
-    }
-  }, []);
-
-  const saveSettings = useCallback(
-    async (
-      input: { enabled: boolean; desync_repeats?: number },
-    ): Promise<boolean> => {
-      setIsSaving(true);
-      setError(null);
-
-      try {
-        const body: { action: "save"; enabled: boolean; desync_repeats?: number } = {
-          action: "save",
-          enabled: input.enabled,
-        };
-        if (typeof input.desync_repeats === "number") {
-          body.desync_repeats = input.desync_repeats;
-        }
-
-        const response = await authFetch(API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
-        if (!data.success) {
-          setError(resolveErrorMessage(t, data.error, data.detail, "Failed to save settings"));
-          return false;
-        }
-
-        // Silent re-fetch to get updated status
-        await fetchSettings(true);
-        return true;
-      } catch (err) {
-        if (mountedRef.current) {
-          setError(
-            err instanceof Error ? err.message : "Failed to save settings"
-          );
-        }
-        return false;
-      } finally {
-        if (mountedRef.current) setIsSaving(false);
-      }
+      return response.json();
     },
-    [fetchSettings, t]
-  );
+    // Poll for live stats while service is running
+    refetchInterval: (q) =>
+      (q.state.data as VideoOptimizerResponse | undefined)?.status === "running"
+        ? 1000
+        : false,
+  });
 
-  const stopVerifyPolling = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-  }, []);
+  const data = query.data;
+  const settings: VideoOptimizerSettings | null =
+    data && data.success
+      ? {
+          enabled: data.enabled,
+          other_enabled: data.other_enabled,
+          status: data.status,
+          uptime: data.uptime,
+          packets_processed: data.packets_processed,
+          domains_loaded: data.domains_loaded,
+          desync_repeats: data.desync_repeats,
+          binary_installed: data.binary_installed,
+          kernel_module_loaded: data.kernel_module_loaded,
+        }
+      : null;
 
-  const pollVerifyStatus = useCallback(async () => {
-    try {
-      const response = await authFetch(
-        `${API_URL}?action=verify_status`
-      );
-      if (!response.ok) return;
+  const error = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to fetch settings"
+    : data && !data.success
+      ? "Failed to load settings"
+      : null;
 
-      const data: VerifyResult = await response.json();
-      if (!mountedRef.current) return;
-
-      setVerifyResult(data);
-
-      if (data.status === "complete" || data.status === "error") {
-        stopVerifyPolling();
-        // Refresh settings to get updated status/stats
-        await fetchSettings(true);
+  const saveMutation = useMutation({
+    mutationFn: async (input: {
+      enabled: boolean;
+      desync_repeats?: number;
+    }): Promise<boolean> => {
+      const body: {
+        action: "save";
+        enabled: boolean;
+        desync_repeats?: number;
+      } = {
+        action: "save",
+        enabled: input.enabled,
+      };
+      if (typeof input.desync_repeats === "number") {
+        body.desync_repeats = input.desync_repeats;
       }
+
+      const response = await authFetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(
+          resolveErrorMessage(t, data.error, data.detail, "Failed to save settings"),
+        );
+      }
+      return true;
+    },
+    onSuccess: () => {
+      // Silent re-fetch to get updated status
+      void query.refetch();
+    },
+  });
+
+  const saveSettings = async (input: {
+    enabled: boolean;
+    desync_repeats?: number;
+  }): Promise<boolean> => {
+    setIsSaving(true);
+    try {
+      return await saveMutation.mutateAsync(input);
     } catch {
-      // Silently retry on next poll interval
+      return false;
+    } finally {
+      setIsSaving(false);
     }
-  }, [stopVerifyPolling, fetchSettings]);
+  };
 
-  const runVerification = useCallback(async () => {
+  // ─── Verify (long-running, polled) ────────────────────────────────────────
+
+  const verifyStatusQuery = useQuery<VerifyResult>({
+    queryKey: ["video-optimizer-verify"],
+    queryFn: async () => {
+      const response = await authFetch(`${API_URL}?action=verify_status`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    },
+    enabled: verifyPolling,
+    refetchInterval: (q) =>
+      q.state.data &&
+      (q.state.data.status === "complete" || q.state.data.status === "error")
+        ? false
+        : 2000,
+    refetchIntervalInBackground: true,
+  });
+
+  // Reflect verify status into local state on every poll; stop polling and
+  // refresh settings once the verify reaches a terminal state.
+  useEffect(() => {
+    const v = verifyStatusQuery.data;
+    if (!v) return;
+    setVerifyResult(v);
+    if (v.status === "complete" || v.status === "error") {
+      setVerifyPolling(false);
+      // Refresh settings to get updated status/stats
+      void query.refetch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verifyStatusQuery.data]);
+
+  const runVerification = async () => {
     setVerifyResult({ success: true, status: "running" });
-
+    setVerifyPolling(false);
     try {
       const response = await authFetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "verify" }),
       });
-
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      // Start polling for results every 2 seconds
-      pollTimerRef.current = setInterval(pollVerifyStatus, 2000);
+      setVerifyPolling(true);
     } catch (err) {
-      if (mountedRef.current) {
-        setVerifyResult({
-          success: false,
-          status: "error",
-          error:
-            err instanceof Error ? err.message : "Failed to start verification",
-        });
-      }
+      setVerifyResult({
+        success: false,
+        status: "error",
+        error: err instanceof Error ? err.message : "Failed to start verification",
+      });
     }
-  }, [pollVerifyStatus]);
+  };
 
-  const stopInstallPolling = useCallback(() => {
-    if (installPollRef.current) {
-      clearInterval(installPollRef.current);
-      installPollRef.current = null;
-    }
-  }, []);
+  // ─── Install (long-running, polled) ───────────────────────────────────────
 
-  const pollInstallStatus = useCallback(async () => {
-    try {
+  const installStatusQuery = useQuery<InstallResult>({
+    queryKey: ["video-optimizer-install"],
+    queryFn: async () => {
       const response = await authFetch(`${API_URL}?action=install_status`);
-      if (!response.ok) return;
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    },
+    enabled: installPolling,
+    refetchInterval: (q) =>
+      q.state.data &&
+      (q.state.data.status === "complete" || q.state.data.status === "error")
+        ? false
+        : 2000,
+    refetchIntervalInBackground: true,
+  });
 
-      const data: InstallResult = await response.json();
-      if (!mountedRef.current) return;
-
-      setInstallResult(data);
-
-      if (data.status === "complete" || data.status === "error") {
-        stopInstallPolling();
-        // Refresh settings to pick up binary_installed change
-        await fetchSettings(true);
-      }
-    } catch {
-      // Silently retry on next poll interval
+  // Reflect install status into local state on every poll; stop polling and
+  // refresh settings once the install reaches a terminal state.
+  useEffect(() => {
+    const v = installStatusQuery.data;
+    if (!v) return;
+    setInstallResult(v);
+    if (v.status === "complete" || v.status === "error") {
+      setInstallPolling(false);
+      // Refresh settings to pick up binary_installed change
+      void query.refetch();
     }
-  }, [stopInstallPolling, fetchSettings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [installStatusQuery.data]);
 
-  const runInstall = useCallback(async () => {
-    setInstallResult({ success: true, status: "running", message: "Starting installation..." });
-
+  const runInstall = async () => {
+    setInstallResult({
+      success: true,
+      status: "running",
+      message: "Starting installation...",
+    });
+    setInstallPolling(false);
     try {
       const response = await authFetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "install" }),
       });
-
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      // Start polling for results every 2 seconds
-      installPollRef.current = setInterval(pollInstallStatus, 2000);
+      setInstallPolling(true);
     } catch (err) {
-      if (mountedRef.current) {
-        setInstallResult({
-          success: false,
-          status: "error",
-          message: err instanceof Error ? err.message : "Failed to start installation",
-        });
-      }
+      setInstallResult({
+        success: false,
+        status: "error",
+        message: err instanceof Error ? err.message : "Failed to start installation",
+      });
     }
-  }, [pollInstallStatus]);
+  };
 
-  useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
-
-  // Poll for live stats while service is running
-  const statsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    if (statsPollRef.current) {
-      clearInterval(statsPollRef.current);
-      statsPollRef.current = null;
-    }
-
-    if (settings?.status === "running") {
-      statsPollRef.current = setInterval(() => fetchSettings(true), 1000);
-    }
-
-    return () => {
-      if (statsPollRef.current) {
-        clearInterval(statsPollRef.current);
-      }
-    };
-  }, [settings?.status, fetchSettings]);
-
-  const [isUninstalling, setIsUninstalling] = useState(false);
-
-  const runUninstall = useCallback(async (): Promise<boolean> => {
-    setIsUninstalling(true);
-    try {
+  const uninstallMutation = useMutation({
+    mutationFn: async (): Promise<boolean> => {
       const response = await authFetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -270,24 +238,31 @@ export function useVideoOptimizer() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       if (!data.success) {
-        setError(resolveErrorMessage(t, undefined, data.detail, "Failed to uninstall"));
-        return false;
+        throw new Error(
+          resolveErrorMessage(t, undefined, data.detail, "Failed to uninstall"),
+        );
       }
-      await fetchSettings(true);
       return true;
-    } catch (err) {
-      if (mountedRef.current) {
-        setError(err instanceof Error ? err.message : "Failed to uninstall");
-      }
+    },
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
+
+  const runUninstall = async (): Promise<boolean> => {
+    setIsUninstalling(true);
+    try {
+      return await uninstallMutation.mutateAsync();
+    } catch {
       return false;
     } finally {
-      if (mountedRef.current) setIsUninstalling(false);
+      setIsUninstalling(false);
     }
-  }, [fetchSettings, t]);
+  };
 
   return {
     settings,
-    isLoading,
+    isLoading: query.isLoading || query.isPending,
     isSaving,
     isUninstalling,
     error,
@@ -297,6 +272,8 @@ export function useVideoOptimizer() {
     installResult,
     runInstall,
     runUninstall,
-    refresh: fetchSettings,
+    refresh: (..._args: unknown[]) => {
+      void query.refetch();
+    },
   };
 }

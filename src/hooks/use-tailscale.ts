@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -94,8 +95,6 @@ export interface UseTailscaleReturn {
 
 export function useTailscale(): UseTailscaleReturn {
   const { t } = useTranslation("errors");
-  const [status, setStatus] = useState<TailscaleStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isTogglingService, setIsTogglingService] = useState(false);
@@ -109,7 +108,6 @@ export function useTailscale(): UseTailscaleReturn {
   const [error, setError] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -120,62 +118,45 @@ export function useTailscale(): UseTailscaleReturn {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Fetch current status
+  // Fetch current status — adaptive polling, faster during auth wait
   // ---------------------------------------------------------------------------
-  const fetchStatus = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    setError(null);
 
-    try {
+  const query = useQuery<TailscaleStatus>({
+    queryKey: ["tailscale-status"],
+    queryFn: async () => {
       const resp = await authFetch(CGI_ENDPOINT);
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
 
       const json = await resp.json();
-      if (!mountedRef.current) return;
-
       if (!json.success) {
-        setError(resolveErrorMessage(t, json.error, undefined, "Failed to fetch Tailscale status"));
-        return;
+        throw new Error(
+          resolveErrorMessage(t, json.error, undefined, "Failed to fetch Tailscale status"),
+        );
       }
 
-      setStatus(json);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch Tailscale status",
-      );
-    } finally {
-      if (mountedRef.current && !silent) {
-        setIsLoading(false);
-      }
-    }
-  }, [t]);
+      return json as TailscaleStatus;
+    },
+    refetchInterval: (q) => {
+      const isAuthWaiting =
+        q.state.data?.backend_state === "NeedsLogin" && !!q.state.data?.auth_url;
+      return isAuthWaiting ? POLL_AUTH_MS : POLL_NORMAL_MS;
+    },
+  });
 
-  // ---------------------------------------------------------------------------
-  // Adaptive polling — faster during auth wait
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    fetchStatus();
-  }, [fetchStatus]);
+  const status = query.data ?? null;
 
-  useEffect(() => {
-    const isAuthWaiting =
-      status?.backend_state === "NeedsLogin" && !!status?.auth_url;
-    const interval = isAuthWaiting ? POLL_AUTH_MS : POLL_NORMAL_MS;
-
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(() => fetchStatus(true), interval);
-
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [fetchStatus, status?.backend_state, status?.auth_url]);
+  const errorMessage = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to fetch Tailscale status"
+    : error;
 
   // ---------------------------------------------------------------------------
   // POST helper
   // ---------------------------------------------------------------------------
+
   const postAction = useCallback(
     async (body: Record<string, unknown>): Promise<{
       success: boolean;
@@ -202,6 +183,7 @@ export function useTailscale(): UseTailscaleReturn {
   // ---------------------------------------------------------------------------
   // Actions
   // ---------------------------------------------------------------------------
+
   const connect = useCallback(async (): Promise<boolean> => {
     setIsConnecting(true);
     setError(null);
@@ -216,7 +198,7 @@ export function useTailscale(): UseTailscaleReturn {
       }
 
       // Refetch to pick up auth_url or Running state
-      await fetchStatus(true);
+      await query.refetch();
       return true;
     } catch (err) {
       if (!mountedRef.current) return false;
@@ -225,7 +207,7 @@ export function useTailscale(): UseTailscaleReturn {
     } finally {
       if (mountedRef.current) setIsConnecting(false);
     }
-  }, [postAction, fetchStatus, t]);
+  }, [postAction, query, t]);
 
   const disconnect = useCallback(async (): Promise<boolean> => {
     setIsDisconnecting(true);
@@ -240,7 +222,7 @@ export function useTailscale(): UseTailscaleReturn {
         return false;
       }
 
-      await fetchStatus(true);
+      await query.refetch();
       return true;
     } catch (err) {
       if (!mountedRef.current) return false;
@@ -249,7 +231,7 @@ export function useTailscale(): UseTailscaleReturn {
     } finally {
       if (mountedRef.current) setIsDisconnecting(false);
     }
-  }, [postAction, fetchStatus, t]);
+  }, [postAction, query, t]);
 
   const logout = useCallback(async (): Promise<boolean> => {
     setIsDisconnecting(true);
@@ -264,7 +246,7 @@ export function useTailscale(): UseTailscaleReturn {
         return false;
       }
 
-      await fetchStatus(true);
+      await query.refetch();
       return true;
     } catch (err) {
       if (!mountedRef.current) return false;
@@ -273,7 +255,7 @@ export function useTailscale(): UseTailscaleReturn {
     } finally {
       if (mountedRef.current) setIsDisconnecting(false);
     }
-  }, [postAction, fetchStatus, t]);
+  }, [postAction, query, t]);
 
   const startService = useCallback(async (): Promise<boolean> => {
     setIsTogglingService(true);
@@ -288,7 +270,7 @@ export function useTailscale(): UseTailscaleReturn {
         return false;
       }
 
-      await fetchStatus(true);
+      await query.refetch();
       return true;
     } catch (err) {
       if (!mountedRef.current) return false;
@@ -297,7 +279,7 @@ export function useTailscale(): UseTailscaleReturn {
     } finally {
       if (mountedRef.current) setIsTogglingService(false);
     }
-  }, [postAction, fetchStatus, t]);
+  }, [postAction, query, t]);
 
   const stopService = useCallback(async (): Promise<boolean> => {
     setIsTogglingService(true);
@@ -312,7 +294,7 @@ export function useTailscale(): UseTailscaleReturn {
         return false;
       }
 
-      await fetchStatus(true);
+      await query.refetch();
       return true;
     } catch (err) {
       if (!mountedRef.current) return false;
@@ -321,7 +303,7 @@ export function useTailscale(): UseTailscaleReturn {
     } finally {
       if (mountedRef.current) setIsTogglingService(false);
     }
-  }, [postAction, fetchStatus, t]);
+  }, [postAction, query, t]);
 
   const setBootEnabled = useCallback(
     async (enabled: boolean): Promise<boolean> => {
@@ -339,7 +321,7 @@ export function useTailscale(): UseTailscaleReturn {
           return false;
         }
 
-        await fetchStatus(true);
+        await query.refetch();
         return true;
       } catch (err) {
         if (!mountedRef.current) return false;
@@ -349,7 +331,7 @@ export function useTailscale(): UseTailscaleReturn {
         return false;
       }
     },
-    [postAction, fetchStatus, t],
+    [postAction, query, t],
   );
 
   const setExitNodeAdvertised = useCallback(
@@ -369,7 +351,7 @@ export function useTailscale(): UseTailscaleReturn {
           return false;
         }
 
-        await fetchStatus(true);
+        await query.refetch();
         return true;
       } catch (err) {
         if (!mountedRef.current) return false;
@@ -381,12 +363,13 @@ export function useTailscale(): UseTailscaleReturn {
         if (mountedRef.current) setIsTogglingExitNode(false);
       }
     },
-    [postAction, fetchStatus, t],
+    [postAction, query, t],
   );
 
   // ---------------------------------------------------------------------------
   // Install via opkg
   // ---------------------------------------------------------------------------
+
   const stopInstallPolling = useCallback(() => {
     if (installPollRef.current) {
       clearInterval(installPollRef.current);
@@ -402,12 +385,12 @@ export function useTailscale(): UseTailscaleReturn {
       const r = json as unknown as InstallResult;
       if (r.status === "complete" || r.status === "error") {
         stopInstallPolling();
-        await fetchStatus(true);
+        await query.refetch();
       }
     } catch {
       // Silently retry on next poll
     }
-  }, [postAction, stopInstallPolling, fetchStatus]);
+  }, [postAction, stopInstallPolling, query]);
 
   const runInstall = useCallback(async (variant: "official" | "tiny") => {
     setInstallResult({ success: true, status: "running", message: "Starting installation..." });
@@ -438,7 +421,7 @@ export function useTailscale(): UseTailscaleReturn {
         setError(resolveErrorMessage(t, json.error, json.detail, "Failed to uninstall"));
         return false;
       }
-      await fetchStatus(true);
+      await query.refetch();
       return true;
     } catch (err) {
       if (mountedRef.current) {
@@ -450,18 +433,18 @@ export function useTailscale(): UseTailscaleReturn {
     } finally {
       if (mountedRef.current) setIsUninstalling(false);
     }
-  }, [postAction, fetchStatus, t]);
+  }, [postAction, query, t]);
 
   return {
     status,
-    isLoading,
+    isLoading: query.isLoading || query.isPending,
     isConnecting,
     isDisconnecting,
     isTogglingService,
     isTogglingExitNode,
     isUninstalling,
     installResult,
-    error,
+    error: errorMessage,
     connect,
     disconnect,
     logout,
@@ -471,6 +454,8 @@ export function useTailscale(): UseTailscaleReturn {
     setExitNodeAdvertised,
     uninstall,
     runInstall,
-    refresh: fetchStatus,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

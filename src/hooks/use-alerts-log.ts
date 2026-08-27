@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
@@ -38,76 +39,62 @@ export interface UseAlertsLogReturn {
 
 export function useAlertsLog(): UseAlertsLogReturn {
   const { t } = useTranslation("errors");
-  const [entries, setEntries] = useState<AlertLogEntry[]>([]);
-  const [total, setTotal] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastFetched, setLastFetched] = useState<Date | null>(null);
 
-  const abortRef = useRef<AbortController | null>(null);
+  // Tracks whether the most recent refetch was a "silent" one. Silent refreshes
+  // (refreshKey changes) suppress the error toast; initial load and manual
+  // refresh surface it. Mirrors the original mode: "initial" | "refresh" |
+  // "silent" without needing state.
+  const silentRef = useRef(false);
 
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, []);
+  const query = useQuery<AlertsLogResponse>({
+    queryKey: ["alerts-log"],
+    queryFn: async () => {
+      const resp = await authFetch(CGI_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get_log" }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-  const fetchLog = useCallback(
-    async (mode: "initial" | "refresh" | "silent" = "initial") => {
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
+      const data: AlertsLogResponse = await resp.json();
 
-      if (mode === "initial") setIsLoading(true);
-      if (mode === "refresh") setIsRefreshing(true);
-      setError(null);
-
-      try {
-        const resp = await authFetch(CGI_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "get_log" }),
-          signal: controller.signal,
-        });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-        const data: AlertsLogResponse = await resp.json();
-        if (controller.signal.aborted) return;
-
-        if (data.success) {
-          setEntries(data.entries);
-          setTotal(data.total);
-          setLastFetched(new Date());
-        } else {
-          const msg = resolveErrorMessage(
-            t,
-            data.error,
-            undefined,
-            "Failed to load alert log",
-          );
-          setError(msg);
-          if (mode !== "silent") toast.error(msg);
-        }
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        const msg =
-          err instanceof Error ? err.message : "Failed to load alert log";
-        setError(msg);
-        if (mode !== "silent") toast.error(msg);
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-          setIsRefreshing(false);
-        }
+      if (!data.success) {
+        const msg = resolveErrorMessage(
+          t,
+          data.error,
+          undefined,
+          "Failed to load alert log",
+        );
+        // Non-silent failures surface as a toast, mirroring the original.
+        if (!silentRef.current) toast.error(msg);
+        throw new Error(msg);
       }
+      return data;
     },
-    [t],
-  );
+    // The original fires one fetch per request (aborting in-flight); a retry
+    // would double-fire the POST and could double-toast. Keep it single-shot.
+    retry: false,
+  });
 
-  useEffect(() => {
-    fetchLog("initial");
-  }, [fetchLog]);
+  const data = query.data ?? null;
+  const entries = data?.entries ?? [];
+  const total = data?.total ?? 0;
+
+  const error = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to load alert log"
+    : null;
+
+  // Original set lastFetched to `new Date()` only on successful fetches;
+  // TanStack's dataUpdatedAt is likewise only advanced by a success.
+  const lastFetched = data ? new Date(query.dataUpdatedAt) : null;
+
+  const isLoading = query.isLoading || query.isPending;
+  // Manual (non-silent, non-initial) refresh in flight. Derived from
+  // isFetching minus the initial load and silent refreshes.
+  const isRefreshing =
+    query.isFetching && !isLoading && !silentRef.current;
 
   return {
     entries,
@@ -116,7 +103,13 @@ export function useAlertsLog(): UseAlertsLogReturn {
     isRefreshing,
     error,
     lastFetched,
-    refresh: useCallback(() => fetchLog("refresh"), [fetchLog]),
-    silentRefresh: useCallback(() => fetchLog("silent"), [fetchLog]),
+    refresh: () => {
+      silentRef.current = false;
+      void query.refetch();
+    },
+    silentRefresh: () => {
+      silentRef.current = true;
+      void query.refetch();
+    },
   };
 }

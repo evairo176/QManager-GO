@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { DeviceHostnameResponse } from "@/types/device-hostname";
 
 // =============================================================================
@@ -24,41 +24,30 @@ export interface UseDeviceHostnameReturn {
 }
 
 export function useDeviceHostname(): UseDeviceHostnameReturn {
-  const [hostname, setHostname] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const mountedRef = useRef(true);
+  const query = useQuery<string | null>({
+    queryKey: ["device-hostname"],
+    // Silent failure is the contract: older firmware without the CGI,
+    // network blip, or any other failure resolves to "hide the pill".
+    queryFn: async () => {
+      const res = await fetch(FETCH_ENDPOINT, {
+        cache: "no-store",
+        credentials: "omit",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as DeviceHostnameResponse;
+      const trimmed = (json?.hostname ?? "").trim();
+      return trimmed.length > 0 ? trimmed : null;
+    },
+    // Failures are expected pre-auth (older firmware); do not retry or surface.
+    retry: false,
+  });
 
-  useEffect(() => {
-    mountedRef.current = true;
-    const controller = new AbortController();
+  // Errors are deliberately swallowed: the pre-auth surface never surfaces a
+  // hostname error — the consumer just hides the pill when hostname is null.
+  const hostname = query.error ? null : (query.data ?? null);
 
-    (async () => {
-      try {
-        const res = await fetch(FETCH_ENDPOINT, {
-          cache: "no-store",
-          credentials: "omit",
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = (await res.json()) as DeviceHostnameResponse;
-        if (!mountedRef.current || controller.signal.aborted) return;
-        const trimmed = (json?.hostname ?? "").trim();
-        setHostname(trimmed.length > 0 ? trimmed : null);
-      } catch {
-        if (!mountedRef.current) return;
-        // Silent failure is the contract: older firmware without the CGI,
-        // network blip, or any other failure resolves to "hide the pill".
-        setHostname(null);
-      } finally {
-        if (mountedRef.current) setIsLoading(false);
-      }
-    })();
-
-    return () => {
-      mountedRef.current = false;
-      controller.abort();
-    };
-  }, []);
-
-  return { hostname, isLoading };
+  return {
+    hostname,
+    isLoading: query.isLoading || query.isPending,
+  };
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -45,113 +46,94 @@ export interface UseTtlSettingsReturn {
 
 export function useTtlSettings(): UseTtlSettingsReturn {
   const { t } = useTranslation("errors");
-  const [data, setData] = useState<TtlSettingsData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Fetch current TTL/HL values
-  // ---------------------------------------------------------------------------
-  const fetchTtl = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery<{
+    success: boolean;
+    is_enabled: boolean;
+    ttl: number;
+    hl: number;
+    autostart: boolean;
+    error?: string;
+    detail?: string;
+  }>({
+    queryKey: ["ttl-settings"],
+    queryFn: async () => {
       const resp = await authFetch(CGI_ENDPOINT);
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      }
+      return resp.json();
+    },
+  });
+
+  const data: TtlSettingsData | null = query.data && query.data.success
+    ? {
+        isEnabled: query.data.is_enabled,
+        ttl: query.data.ttl,
+        hl: query.data.hl,
+        autostart: query.data.autostart,
+      }
+    : null;
+
+  const error = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to fetch TTL settings"
+    : query.data && !query.data.success
+      ? resolveErrorMessage(t, query.data.error, undefined, "Failed to fetch TTL settings")
+      : null;
+
+  const saveMutation = useMutation({
+    mutationFn: async ({
+      ttl,
+      hl,
+    }: {
+      ttl: number;
+      hl: number;
+    }): Promise<boolean> => {
+      const resp = await authFetch(CGI_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ttl, hl }),
+      });
+
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
 
       const json = await resp.json();
-      if (!mountedRef.current) return;
-
       if (!json.success) {
-        setError(resolveErrorMessage(t, json.error, undefined, "Failed to fetch TTL settings"));
-        return;
+        throw new Error(
+          resolveErrorMessage(t, json.error, json.detail, "Failed to apply TTL/HL"),
+        );
       }
-
-      setData({
-        isEnabled: json.is_enabled,
-        ttl: json.ttl,
-        hl: json.hl,
-        autostart: json.autostart,
-      });
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch TTL settings",
-      );
-    } finally {
-      if (mountedRef.current && !silent) {
-        setIsLoading(false);
-      }
-    }
-  }, [t]);
-
-  // Fetch on mount
-  useEffect(() => {
-    fetchTtl();
-  }, [fetchTtl]);
-
-  // ---------------------------------------------------------------------------
-  // Save TTL/HL values
-  // ---------------------------------------------------------------------------
-  const saveTtlHl = useCallback(
-    async (ttl: number, hl: number): Promise<boolean> => {
-      setError(null);
-      setIsSaving(true);
-
-      try {
-        const resp = await authFetch(CGI_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ttl, hl }),
-        });
-
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
-
-        const json = await resp.json();
-        if (!mountedRef.current) return false;
-
-        if (!json.success) {
-          setError(resolveErrorMessage(t, json.error, json.detail, "Failed to apply TTL/HL"));
-          return false;
-        }
-
-        // Silent re-fetch to update local state
-        await fetchTtl(true);
-        return true;
-      } catch (err) {
-        if (!mountedRef.current) return false;
-        setError(err instanceof Error ? err.message : "Failed to apply TTL/HL");
-        return false;
-      } finally {
-        if (mountedRef.current) {
-          setIsSaving(false);
-        }
-      }
+      return true;
     },
-    [fetchTtl, t],
-  );
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
+
+  const saveTtlHl = async (ttl: number, hl: number): Promise<boolean> => {
+    setIsSaving(true);
+    try {
+      return await saveMutation.mutateAsync({ ttl, hl });
+    } catch {
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return {
     data,
-    isLoading,
+    isLoading: query.isLoading || query.isPending,
     isSaving,
     error,
     saveTtlHl,
-    refresh: fetchTtl,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

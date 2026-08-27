@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type {
   SshPasswordChangeRequest,
@@ -54,57 +55,66 @@ export interface UseSshPasswordReturn {
 }
 
 export function useSshPassword(): UseSshPasswordReturn {
-  const [isPending, setIsPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const mutation = useMutation<
+    boolean,
+    Error,
+    {
+      currentPassword: string;
+      newPassword: string;
+      enforceStrong: boolean;
+    }
+  >({
+    mutationFn: async ({ currentPassword, newPassword, enforceStrong }) => {
+      const body: SshPasswordChangeRequest = {
+        current_password: currentPassword,
+        new_password: newPassword,
+        enforce_strong: enforceStrong,
+      };
+
+      const resp = await authFetch(CGI_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!resp.ok && resp.status !== 400 && resp.status !== 401) {
+        throw new Error(`Request failed (HTTP ${resp.status}).`);
+      }
+
+      const data = (await resp.json()) as SshPasswordChangeResponse;
+
+      if (!data.success) {
+        throw new Error(humanizeError(data.error, data.detail));
+      }
+
+      return true;
+    },
+  });
 
   const clearError = useCallback(() => {
-    setError(null);
-  }, []);
+    mutation.reset();
+  }, [mutation]);
 
-  const changePassword = useCallback(
-    async (
-      currentPassword: string,
-      newPassword: string,
-      enforceStrong: boolean
-    ): Promise<boolean> => {
-      setError(null);
-      setIsPending(true);
+  const changePassword = async (
+    currentPassword: string,
+    newPassword: string,
+    enforceStrong: boolean
+  ): Promise<boolean> => {
+    try {
+      return await mutation.mutateAsync({
+        currentPassword,
+        newPassword,
+        enforceStrong,
+      });
+    } catch {
+      return false;
+    }
+  };
 
-      try {
-        const body: SshPasswordChangeRequest = {
-          current_password: currentPassword,
-          new_password: newPassword,
-          enforce_strong: enforceStrong,
-        };
-
-        const resp = await authFetch(CGI_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-
-        if (!resp.ok && resp.status !== 400 && resp.status !== 401) {
-          setError(`Request failed (HTTP ${resp.status}).`);
-          return false;
-        }
-
-        const data = (await resp.json()) as SshPasswordChangeResponse;
-
-        if (!data.success) {
-          setError(humanizeError(data.error, data.detail));
-          return false;
-        }
-
-        return true;
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "SSH password change failed.");
-        return false;
-      } finally {
-        setIsPending(false);
-      }
-    },
-    []
-  );
-
-  return { changePassword, isPending, error, clearError };
+  return {
+    changePassword,
+    isPending: mutation.isPending,
+    error: mutation.error ? mutation.error.message : null,
+    clearError,
+  };
 }

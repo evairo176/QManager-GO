@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useEffect, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -37,119 +37,71 @@ export interface UseIpaOffloadReturn {
 
 export function useIpaOffload(): UseIpaOffloadReturn {
   const { t } = useTranslation("errors");
-  const [state, setState] = useState<IpaOffloadState | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // ─── Fetch current state ────────────────────────────────────────────────
-  const fetchState = useCallback(
-    async (silent = false) => {
-      if (!silent) setIsLoading(true);
-      setError(null);
-
-      try {
-        const resp = await authFetch(CGI_ENDPOINT);
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
-
-        const json: IpaOffloadGetResponse = await resp.json();
-        if (!mountedRef.current) return;
-
-        if (!json.success) {
-          setError(
-            resolveErrorMessage(
-              t,
-              json.error,
-              json.detail,
-              "Failed to read offload state",
-            ),
-          );
-          return;
-        }
-
-        setState({ available: json.available, enabled: json.enabled });
-      } catch (err) {
-        if (!mountedRef.current) return;
-        setError(
-          err instanceof Error ? err.message : "Failed to read offload state",
-        );
-      } finally {
-        if (mountedRef.current && !silent) {
-          setIsLoading(false);
-        }
+  const query = useQuery<IpaOffloadState>({
+    queryKey: ["ipa-offload"],
+    queryFn: async () => {
+      const resp = await authFetch(CGI_ENDPOINT);
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
-    },
-    [t],
-  );
 
-  useEffect(() => {
-    fetchState();
-  }, [fetchState]);
+      const json: IpaOffloadGetResponse = await resp.json();
 
-  // ─── Toggle (pessimistic) ───────────────────────────────────────────────
-  const setEnabled = useCallback(
-    async (enabled: boolean): Promise<boolean> => {
-      setError(null);
-      setIsSaving(true);
-
-      try {
-        const resp = await authFetch(CGI_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: enabled ? "enable" : "disable" }),
-        });
-
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
-
-        const json: IpaOffloadPostResponse = await resp.json();
-        if (!mountedRef.current) return false;
-
-        if (!json.success) {
-          setError(
-            resolveErrorMessage(
-              t,
-              json.error,
-              json.detail,
-              "Failed to update offload",
-            ),
-          );
-          return false;
-        }
-
-        // Pessimistic: re-read authoritative state instead of flipping locally.
-        await fetchState(true);
-        return true;
-      } catch (err) {
-        if (!mountedRef.current) return false;
-        setError(
-          err instanceof Error ? err.message : "Failed to update offload",
+      if (!json.success) {
+        throw new Error(
+          resolveErrorMessage(t, json.error, json.detail, "Failed to read offload state")
         );
-        return false;
-      } finally {
-        if (mountedRef.current) {
-          setIsSaving(false);
-        }
       }
+
+      return { available: json.available, enabled: json.enabled };
     },
-    [fetchState, t],
-  );
+  });
 
-  const refresh = useCallback(() => {
-    fetchState();
-  }, [fetchState]);
+  const toggleMutation = useMutation({
+    mutationFn: async (enabled: boolean): Promise<boolean> => {
+      const resp = await authFetch(CGI_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: enabled ? "enable" : "disable" }),
+      });
 
-  return { state, isLoading, isSaving, error, setEnabled, refresh };
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      }
+
+      const json: IpaOffloadPostResponse = await resp.json();
+
+      if (!json.success) {
+        throw new Error(
+          resolveErrorMessage(t, json.error, json.detail, "Failed to update offload")
+        );
+      }
+
+      return true;
+    },
+    onSuccess: () => {
+      // Pessimistic: re-read authoritative state instead of flipping locally.
+      void query.refetch();
+    },
+  });
+
+  const setEnabled = async (enabled: boolean): Promise<boolean> => {
+    try {
+      return await toggleMutation.mutateAsync(enabled);
+    } catch {
+      return false;
+    }
+  };
+
+  return {
+    state: query.data ?? null,
+    isLoading: query.isLoading || query.isPending,
+    isSaving: toggleMutation.isPending,
+    error: query.error?.message ?? toggleMutation.error?.message ?? null,
+    setEnabled,
+    refresh: () => {
+      void query.refetch();
+    },
+  };
 }

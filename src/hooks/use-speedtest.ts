@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type {
   SpeedtestCheckResponse,
@@ -68,158 +69,150 @@ export interface UseSpeedtestReturn {
 }
 
 export function useSpeedtest(): UseSpeedtestReturn {
-  const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
   const [phase, setPhase] = useState<SpeedtestPhase>("idle");
   const [progress, setProgress] = useState(0);
   const [currentProgress, setCurrentProgress] =
     useState<SpeedtestProgressLine | null>(null);
   const [result, setResult] = useState<SpeedtestFinalResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [servers, setServers] = useState<SpeedtestServerEntry[]>([]);
   const [selectedServer, setSelectedServer] = useState<number | null>(null);
-  const [isLoadingServers, setIsLoadingServers] = useState(false);
+  const [pollingEnabled, setPollingEnabled] = useState(false);
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
-  // ---------------------------------------------------------------------------
-  // Cleanup on unmount
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
     };
   }, []);
 
   // ---------------------------------------------------------------------------
   // Check availability (once on mount)
   // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const check = async () => {
-      try {
-        const resp = await authFetch(`${CGI_BASE}/speedtest_check.sh`);
-        if (!resp.ok) {
-          setIsAvailable(false);
-          return;
-        }
-        const data: SpeedtestCheckResponse = await resp.json();
-        if (mountedRef.current) setIsAvailable(data.available ?? (data as any).installed ?? true);
-      } catch {
-        if (mountedRef.current) setIsAvailable(false);
+
+  const availabilityQuery = useQuery<SpeedtestCheckResponse>({
+    queryKey: ["speedtest-check"],
+    queryFn: async () => {
+      const resp = await authFetch(`${CGI_BASE}/speedtest_check.sh`);
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
       }
-    };
-    check();
-  }, []);
+      return resp.json();
+    },
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  const isAvailable: boolean | null = availabilityQuery.isPending
+    ? null
+    : availabilityQuery.isError
+      ? false
+      : (availabilityQuery.data?.available ??
+        (availabilityQuery.data as unknown as { installed?: boolean })
+          ?.installed ??
+        true);
 
   // ---------------------------------------------------------------------------
-  // Fetch nearby servers
+  // Fetch nearby servers (on demand)
   // ---------------------------------------------------------------------------
-  const fetchServers = useCallback(async () => {
-    setIsLoadingServers(true);
-    try {
+
+  const serversQuery = useQuery<SpeedtestServersResponse>({
+    queryKey: ["speedtest-servers"],
+    queryFn: async () => {
       const resp = await authFetch(`${CGI_BASE}/speedtest_servers.sh`);
-      if (!resp.ok) return;
-      const data: SpeedtestServersResponse = await resp.json();
-      if (!mountedRef.current) return;
-      if (data.success && data.servers) {
-        setServers(data.servers);
-      }
-    } catch {
-      // Non-fatal — user can still run with auto-select
-    } finally {
-      if (mountedRef.current) setIsLoadingServers(false);
-    }
-  }, []);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    },
+    enabled: false, // Fetched only when the user opens the server picker
+  });
+
+  const servers: SpeedtestServerEntry[] =
+    serversQuery.data?.success && serversQuery.data.servers
+      ? serversQuery.data.servers
+      : [];
+
+  const fetchServers = async () => {
+    await serversQuery.refetch();
+  };
 
   // ---------------------------------------------------------------------------
-  // Stop polling helper
+  // Core status polling — active only while a test is running
   // ---------------------------------------------------------------------------
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, []);
 
-  // ---------------------------------------------------------------------------
-  // Core poll function
-  // Uses functional setState to avoid stale closures in setInterval.
-  // No dependency on any React state — safe to capture in setInterval.
-  // ---------------------------------------------------------------------------
-  const pollStatus = useCallback(async () => {
-    try {
+  const statusQuery = useQuery<SpeedtestStatusResponse>({
+    queryKey: ["speedtest-status"],
+    queryFn: async () => {
       const resp = await authFetch(`${CGI_BASE}/speedtest_status.sh`);
-      if (!resp.ok) return;
-      const data: SpeedtestStatusResponse = await resp.json();
-      if (!mountedRef.current) return;
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    },
+    enabled: pollingEnabled,
+    refetchInterval: pollingEnabled ? POLL_INTERVAL_MS : false,
+  });
 
-      switch (data.status) {
-        case "idle":
-          // Server says idle. Don't reset if viewing results.
-          setPhase((prev) => {
-            if (prev === "complete" || prev === "error" || prev === "idle")
-              return prev;
-            return "idle";
-          });
-          setProgress(0);
-          setCurrentProgress(null);
-          stopPolling();
-          break;
+  // Drive phase/progress/result state from each polled status.
+  useEffect(() => {
+    const data = statusQuery.data;
+    if (!data || !mountedRef.current) return;
 
-        case "running": {
-          const p = data.progress || (data as any).current;
-          const newPhase = (data.phase || "initializing") as SpeedtestPhase;
-          setPhase(newPhase);
+    switch (data.status) {
+      case "idle":
+        // Server says idle. Don't reset if viewing results.
+        setPhase((prev) => {
+          if (prev === "complete" || prev === "error" || prev === "idle")
+            return prev;
+          return "idle";
+        });
+        setProgress(0);
+        setCurrentProgress(null);
+        setPollingEnabled(false);
+        break;
 
-          if (p && typeof p === "object") {
-            setCurrentProgress(p);
-            if (p.type === "ping" && p.ping) setProgress(p.ping.progress ?? 0.5);
-            else if (p.type === "download" && p.download) setProgress(p.download.progress ?? 0.5);
-            else if (p.type === "upload" && p.upload) setProgress(p.upload.progress ?? 0.5);
-            else setProgress(0);
-          }
-          break;
+      case "running": {
+        const p = data.progress || (data as unknown as { current?: SpeedtestProgressLine }).current;
+        const newPhase = (data.phase || "initializing") as SpeedtestPhase;
+        setPhase(newPhase);
+
+        if (p && typeof p === "object") {
+          setCurrentProgress(p);
+          if (p.type === "ping" && p.ping) setProgress(p.ping.progress ?? 0.5);
+          else if (p.type === "download" && p.download) setProgress(p.download.progress ?? 0.5);
+          else if (p.type === "upload" && p.upload) setProgress(p.upload.progress ?? 0.5);
+          else setProgress(0);
         }
-
-        case "complete":
-        case "completed":
-          setPhase("complete");
-          setProgress(1);
-          setResult(data.result || ((data as any).current?.type === "result" ? (data as any).current : null));
-          setCurrentProgress(null);
-          stopPolling();
-          break;
-
-        case "error":
-          setPhase("error");
-          setError(data.detail || data.error);
-          setCurrentProgress(null);
-          stopPolling();
-          break;
+        break;
       }
-    } catch {
-      // Network error during poll — not critical, retry next interval
-    }
-  }, [stopPolling]);
 
-  // ---------------------------------------------------------------------------
-  // Start polling helper
-  // ---------------------------------------------------------------------------
-  const startPolling = useCallback(() => {
-    if (pollRef.current) return; // Already polling
-    pollStatus(); // Immediate first poll
-    pollRef.current = setInterval(pollStatus, POLL_INTERVAL_MS);
-  }, [pollStatus]);
+      case "complete":
+      case "completed":
+        setPhase("complete");
+        setProgress(1);
+        setResult(
+          data.result ||
+            ((data as unknown as { current?: SpeedtestProgressLine }).current?.type === "result"
+              ? (data as unknown as { current?: SpeedtestProgressLine }).current
+              : null),
+        );
+        setCurrentProgress(null);
+        setPollingEnabled(false);
+        break;
+
+      case "error":
+        setPhase("error");
+        setError(data.detail || data.error);
+        setCurrentProgress(null);
+        setPollingEnabled(false);
+        break;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusQuery.data]);
 
   // ---------------------------------------------------------------------------
   // Start a new test
   // ---------------------------------------------------------------------------
-  const start = useCallback(async () => {
+
+  const start = async () => {
     setError(null);
     setResult(null);
     setPhase("initializing");
@@ -250,7 +243,7 @@ export function useSpeedtest(): UseSpeedtestReturn {
       if (!data.success) {
         if (data.error === "already_running") {
           // Another tab/instance started it — follow along
-          startPolling();
+          setPollingEnabled(true);
           return;
         }
         setPhase("error");
@@ -259,22 +252,23 @@ export function useSpeedtest(): UseSpeedtestReturn {
       }
 
       // Success — begin polling for progress
-      startPolling();
+      setPollingEnabled(true);
     } catch (err) {
       if (mountedRef.current) {
         setPhase("error");
         setError(
-          err instanceof Error ? err.message : "Failed to start speedtest"
+          err instanceof Error ? err.message : "Failed to start speedtest",
         );
       }
     }
-  }, [startPolling, selectedServer]);
+  };
 
   // ---------------------------------------------------------------------------
   // Refresh status — called on dialog open to detect in-progress tests
   // or load cached results from a previous run
   // ---------------------------------------------------------------------------
-  const refreshStatus = useCallback(async () => {
+
+  const refreshStatus = async () => {
     try {
       const resp = await authFetch(`${CGI_BASE}/speedtest_status.sh`);
       if (!resp.ok) return;
@@ -285,7 +279,7 @@ export function useSpeedtest(): UseSpeedtestReturn {
         const newPhase = (data.phase || "initializing") as SpeedtestPhase;
         setPhase(newPhase);
         if (data.progress) setCurrentProgress(data.progress);
-        startPolling();
+        setPollingEnabled(true);
       } else if (data.status === "complete") {
         setPhase("complete");
         setResult(data.result);
@@ -295,7 +289,7 @@ export function useSpeedtest(): UseSpeedtestReturn {
     } catch {
       // Silent failure
     }
-  }, [startPolling]);
+  };
 
   return {
     isAvailable,
@@ -311,7 +305,7 @@ export function useSpeedtest(): UseSpeedtestReturn {
       phase === "upload",
     servers,
     selectedServer,
-    isLoadingServers,
+    isLoadingServers: serversQuery.isFetching,
     start,
     refreshStatus,
     fetchServers,

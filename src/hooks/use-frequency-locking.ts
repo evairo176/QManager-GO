@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -61,210 +61,132 @@ export interface UseFrequencyLockingReturn {
 
 export function useFrequencyLocking(): UseFrequencyLockingReturn {
   const { t } = useTranslation("errors");
-  const [modemState, setModemState] = useState<FreqLockModemState | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLteLocking, setIsLteLocking] = useState(false);
-  const [isNrLocking, setIsNrLocking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const mountedRef = useRef(true);
-  const retryCountRef = useRef(0);
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      if (retryTimerRef.current) {
-        clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Fetch frequency lock status (modem queries + tower lock gating)
-  // ---------------------------------------------------------------------------
-  const MAX_RETRIES = 3;
-
-  const fetchStatus = useCallback(async () => {
-    try {
+  const query = useQuery<FreqLockStatusResponse>({
+    queryKey: ["frequency-locking"],
+    queryFn: async () => {
       const resp = await authFetch(`${CGI_BASE}/status.sh`);
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
 
       const data: FreqLockStatusResponse = await resp.json();
-      if (!mountedRef.current) return;
 
       if (!data.success) {
-        setError(resolveErrorMessage(t, data.error, undefined, "Failed to fetch frequency lock status"));
-        return;
-      }
-
-      if (data.modem_state !== null && data.modem_state !== undefined) {
-        setModemState(data.modem_state);
-      }
-      setError(null);
-      retryCountRef.current = 0;
-    } catch (err) {
-      if (!mountedRef.current) return;
-      const msg =
-        err instanceof Error
-          ? err.message
-          : "Failed to fetch frequency lock status";
-      setError(msg);
-
-      // Auto-retry with exponential backoff (2s, 4s, 8s)
-      if (retryCountRef.current < MAX_RETRIES) {
-        const delay = Math.pow(2, retryCountRef.current + 1) * 1000;
-        retryCountRef.current += 1;
-        retryTimerRef.current = setTimeout(() => {
-          if (mountedRef.current) {
-            fetchStatus();
-          }
-        }, delay);
-      }
-    } finally {
-      if (mountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, [t]);
-
-  // Initial fetch
-  useEffect(() => {
-    fetchStatus();
-  }, [fetchStatus]);
-
-  // ---------------------------------------------------------------------------
-  // Generic lock/unlock helper
-  // ---------------------------------------------------------------------------
-  const sendLockRequest = useCallback(
-    async (
-      body: Record<string, unknown>,
-      setLocking: (v: boolean) => void
-    ): Promise<boolean> => {
-      setError(null);
-      setLocking(true);
-
-      try {
-        const resp = await authFetch(`${CGI_BASE}/lock.sh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
-
-        const data: FreqLockResponse = await resp.json();
-        if (!mountedRef.current) return false;
-
-        if (!data.success) {
-          setError(resolveErrorMessage(t, data.error, data.detail, "Frequency lock operation failed"));
-          return false;
-        }
-
-        // Wait for modem to reconnect after lock/unlock (3-5s typical)
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-
-        // Re-fetch state
-        await fetchStatus();
-
-        return true;
-      } catch (err) {
-        if (!mountedRef.current) return false;
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Frequency lock operation failed"
+        throw new Error(
+          resolveErrorMessage(t, data.error, undefined, "Failed to fetch frequency lock status")
         );
-        return false;
-      } finally {
-        if (mountedRef.current) {
-          setLocking(false);
-        }
       }
-    },
-    [fetchStatus, t]
-  );
 
-  // ---------------------------------------------------------------------------
-  // LTE Lock/Unlock
-  // ---------------------------------------------------------------------------
-  const lockLte = useCallback(
-    async (earfcns: number[]): Promise<boolean> => {
-      if (earfcns.length === 0 || earfcns.length > 2) {
-        setError("LTE frequency lock requires 1-2 EARFCNs");
-        return false;
-      }
-      return sendLockRequest(
-        { type: "lte", action: "lock", earfcns },
-        setIsLteLocking
+      return data;
+    },
+    // Auto-retry with exponential backoff (2s, 4s, 8s) — mirrors the old
+    // retryCountRef/manual setTimeout logic.
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.pow(2, attemptIndex + 1) * 1000,
+  });
+
+  // Generic lock/unlock helper
+  const sendLockRequest = async (
+    body: Record<string, unknown>
+  ): Promise<boolean> => {
+    const resp = await authFetch(`${CGI_BASE}/lock.sh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    }
+
+    const data: FreqLockResponse = await resp.json();
+
+    if (!data.success) {
+      throw new Error(
+        resolveErrorMessage(t, data.error, data.detail, "Frequency lock operation failed")
       );
+    }
+
+    // Wait for modem to reconnect after lock/unlock (3-5s typical)
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
+    // Re-fetch state
+    await query.refetch();
+
+    return true;
+  };
+
+  const lteMutation = useMutation({
+    mutationFn: async (body: Record<string, unknown>): Promise<boolean> => {
+      return sendLockRequest(body);
     },
-    [sendLockRequest]
-  );
+  });
 
-  const unlockLte = useCallback(async (): Promise<boolean> => {
-    return sendLockRequest(
-      { type: "lte", action: "unlock" },
-      setIsLteLocking
-    );
-  }, [sendLockRequest]);
-
-  // ---------------------------------------------------------------------------
-  // NR Lock/Unlock
-  // ---------------------------------------------------------------------------
-  const lockNr = useCallback(
-    async (entries: NrFreqLockEntry[]): Promise<boolean> => {
-      if (entries.length === 0 || entries.length > 32) {
-        setError("NR frequency lock requires 1-32 entries");
-        return false;
-      }
-      return sendLockRequest(
-        { type: "nr", action: "lock", entries },
-        setIsNrLocking
-      );
+  const nrMutation = useMutation({
+    mutationFn: async (body: Record<string, unknown>): Promise<boolean> => {
+      return sendLockRequest(body);
     },
-    [sendLockRequest]
-  );
+  });
 
-  const unlockNr = useCallback(async (): Promise<boolean> => {
-    return sendLockRequest(
-      { type: "nr", action: "unlock" },
-      setIsNrLocking
-    );
-  }, [sendLockRequest]);
+  const lockLte = async (earfcns: number[]): Promise<boolean> => {
+    if (earfcns.length === 0 || earfcns.length > 2) {
+      return false;
+    }
+    try {
+      return await lteMutation.mutateAsync({ type: "lte", action: "lock", earfcns });
+    } catch {
+      return false;
+    }
+  };
 
-  // ---------------------------------------------------------------------------
-  // Derived state
-  // ---------------------------------------------------------------------------
-  const towerLockLteActive = modemState?.tower_lock_lte_active ?? false;
-  const towerLockNrActive = modemState?.tower_lock_nr_active ?? false;
+  const unlockLte = async (): Promise<boolean> => {
+    try {
+      return await lteMutation.mutateAsync({ type: "lte", action: "unlock" });
+    } catch {
+      return false;
+    }
+  };
 
-  // ---------------------------------------------------------------------------
-  // Manual refresh
-  // ---------------------------------------------------------------------------
-  const refresh = useCallback(() => {
-    setIsLoading(true);
-    fetchStatus();
-  }, [fetchStatus]);
+  const lockNr = async (entries: NrFreqLockEntry[]): Promise<boolean> => {
+    if (entries.length === 0 || entries.length > 32) {
+      return false;
+    }
+    try {
+      return await nrMutation.mutateAsync({ type: "nr", action: "lock", entries });
+    } catch {
+      return false;
+    }
+  };
+
+  const unlockNr = async (): Promise<boolean> => {
+    try {
+      return await nrMutation.mutateAsync({ type: "nr", action: "unlock" });
+    } catch {
+      return false;
+    }
+  };
+
+  const modemState = query.data?.modem_state ?? null;
 
   return {
     modemState,
-    isLoading,
-    isLteLocking,
-    isNrLocking,
-    error,
+    isLoading: query.isLoading || query.isPending,
+    isLteLocking: lteMutation.isPending,
+    isNrLocking: nrMutation.isPending,
+    error:
+      query.error?.message ??
+      lteMutation.error?.message ??
+      nrMutation.error?.message ??
+      null,
     lockLte,
     unlockLte,
     lockNr,
     unlockNr,
-    towerLockLteActive,
-    towerLockNrActive,
-    refresh,
+    towerLockLteActive: modemState?.tower_lock_lte_active ?? false,
+    towerLockNrActive: modemState?.tower_lock_nr_active ?? false,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

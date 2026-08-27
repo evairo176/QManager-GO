@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type {
   ApnSetting,
@@ -52,173 +52,133 @@ export interface UseApnSettingsReturn {
   refresh: () => void;
 }
 
+const QUERY_KEY = ["apn-settings"] as const;
+
 export function useApnSettings(): UseApnSettingsReturn {
-  const [apn, setApn] = useState<ApnSetting | null>(null);
-  const [cids, setCids] = useState<CidContext[] | null>(null);
-  const [active, setActive] = useState<number | null>(null);
-  const [activeCid, setActiveCid] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Fetch the APN setting + live CID contexts
-  // ---------------------------------------------------------------------------
-  const fetchSettings = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery<ApnSettingsResponse>({
+    queryKey: QUERY_KEY,
+    queryFn: async () => {
       const resp = await authFetch(CGI_ENDPOINT);
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
 
       const data: ApnSettingsResponse = await resp.json();
-      if (!mountedRef.current) return;
 
       if (!data.success) {
-        setError(data.error ?? "Failed to fetch APN settings");
-        return;
+        throw new Error(data.error ?? "Failed to fetch APN settings");
       }
 
-      setApn(data.apn);
-      setCids(data.cids ?? []);
-      setActive(typeof data.active === "number" ? data.active : null);
-      setActiveCid(
-        typeof data.active_cid === "number" ? data.active_cid : null
-      );
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch APN settings"
-      );
-    } finally {
-      if (mountedRef.current && !silent) {
-        setIsLoading(false);
-      }
+      return data;
+    },
+  });
+
+  // Shared POST wrapper. Returns the parsed body on HTTP success, or throws.
+  const postAction = async (
+    body: Record<string, unknown>
+  ): Promise<ApnSaveResponse> => {
+    const resp = await authFetch(CGI_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
     }
-  }, []);
+    return (await resp.json()) as ApnSaveResponse;
+  };
 
-  // Fetch on mount
-  useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
-
-  // ---------------------------------------------------------------------------
   // Optimistically reflect a just-applied APN on its live CID so the honest
   // badge doesn't flash "Not live" against a stale cids[] snapshot during the
   // ~1.5s before the reconcile confirms. The reconcile is the source of truth —
   // if the carrier overrode the APN, it flips back to "Not live" with the real
   // value.
-  // ---------------------------------------------------------------------------
-  const patchCidApn = useCallback((cid: number, newApn: string) => {
-    setCids((prev) =>
-      prev ? prev.map((c) => (c.cid === cid ? { ...c, apn: newApn } : c)) : prev
-    );
-  }, []);
-
-  const scheduleReconcile = useCallback(() => {
+  const scheduleReconcile = () => {
     setTimeout(() => {
-      if (mountedRef.current) fetchSettings(true);
+      void query.refetch();
     }, RECONCILE_DELAY_MS);
-  }, [fetchSettings]);
+  };
 
-  // Shared POST wrapper. Returns the parsed body on HTTP success, or throws.
-  const postAction = useCallback(
-    async (body: Record<string, unknown>): Promise<ApnSaveResponse> => {
-      const resp = await authFetch(CGI_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-      }
-      return (await resp.json()) as ApnSaveResponse;
-    },
-    []
-  );
-
-  // ---------------------------------------------------------------------------
-  // Save — writes the APN and runs a COPS cycle (brief WAN drop).
-  // ---------------------------------------------------------------------------
-  const save = useCallback(
-    async (request: ApnSaveRequest): Promise<boolean> => {
-      setError(null);
-      setIsSaving(true);
-      try {
-        const data = await postAction({ action: "save", ...request });
-        if (!mountedRef.current) return false;
-        if (!data.success) {
-          setError(data.error ?? "Failed to save APN");
-          return false;
-        }
-        // Optimistic update: reflect the stored setting immediately.
-        setApn(request);
-        setActive(1);
-        // Reflect on the live CID so the "Active vs Not live" badge doesn't
-        // flash "Not live" before the reconcile picks up the modem's response.
-        patchCidApn(request.cid, request.apn);
-        scheduleReconcile();
-        return true;
-      } catch (err) {
-        if (!mountedRef.current) return false;
-        setError(err instanceof Error ? err.message : "Failed to save APN");
-        return false;
-      } finally {
-        if (mountedRef.current) setIsSaving(false);
-      }
-    },
-    [postAction, patchCidApn, scheduleReconcile]
-  );
-
-  // ---------------------------------------------------------------------------
-  // Deactivate — revert to carrier-default APN (active=0).
-  // ---------------------------------------------------------------------------
-  const deactivate = useCallback(async (): Promise<boolean> => {
-    setError(null);
-    setIsSaving(true);
-    try {
-      const data = await postAction({ action: "deactivate" });
-      if (!mountedRef.current) return false;
+  const saveMutation = useMutation({
+    mutationFn: async (request: ApnSaveRequest) => {
+      const data = await postAction({ action: "save", ...request });
       if (!data.success) {
-        setError(data.error ?? "Failed to use carrier default");
-        return false;
+        throw new Error(data.error ?? "Failed to save APN");
       }
-      setActive(0);
-      scheduleReconcile();
-      return true;
-    } catch (err) {
-      if (!mountedRef.current) return false;
-      setError(
-        err instanceof Error ? err.message : "Failed to use carrier default"
+      return request;
+    },
+    onSuccess: (request) => {
+      // Optimistic update: reflect the stored setting immediately.
+      queryClient.setQueryData<ApnSettingsResponse>(QUERY_KEY, (prev) =>
+        prev
+          ? {
+              ...prev,
+              apn: request,
+              active: 1,
+              cids: prev.cids?.map((c) =>
+                c.cid === request.cid ? { ...c, apn: request.apn } : c
+              ),
+            }
+          : prev
       );
+      scheduleReconcile();
+    },
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: async () => {
+      const data = await postAction({ action: "deactivate" });
+      if (!data.success) {
+        throw new Error(data.error ?? "Failed to use carrier default");
+      }
+      return true;
+    },
+    onSuccess: () => {
+      queryClient.setQueryData<ApnSettingsResponse>(QUERY_KEY, (prev) =>
+        prev ? { ...prev, active: 0 } : prev
+      );
+      scheduleReconcile();
+    },
+  });
+
+  const save = async (request: ApnSaveRequest): Promise<boolean> => {
+    try {
+      await saveMutation.mutateAsync(request);
+      return true;
+    } catch {
       return false;
-    } finally {
-      if (mountedRef.current) setIsSaving(false);
     }
-  }, [postAction, scheduleReconcile]);
+  };
+
+  const deactivate = async (): Promise<boolean> => {
+    try {
+      await deactivateMutation.mutateAsync();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const data = query.data;
 
   return {
-    apn,
-    cids,
-    active,
-    activeCid,
-    isLoading,
-    isSaving,
-    error,
+    apn: data?.apn ?? null,
+    cids: data?.cids ?? [],
+    active: typeof data?.active === "number" ? data.active : null,
+    activeCid: typeof data?.active_cid === "number" ? data.active_cid : null,
+    isLoading: query.isLoading || query.isPending,
+    isSaving: saveMutation.isPending || deactivateMutation.isPending,
+    error:
+      query.error?.message ??
+      saveMutation.error?.message ??
+      deactivateMutation.error?.message ??
+      null,
     save,
     deactivate,
-    refresh: fetchSettings,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

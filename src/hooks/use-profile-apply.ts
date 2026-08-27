@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -40,8 +41,8 @@ export function useProfileApply(): UseProfileApplyReturn {
   const { t } = useTranslation("errors");
   const [applyState, setApplyState] = useState<ProfileApplyState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [polling, setPolling] = useState(false);
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
   // Idle-race guard: between apply.sh returning success (worker PID is live) and
@@ -61,144 +62,128 @@ export function useProfileApply(): UseProfileApplyReturn {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
     };
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Stop polling
+  // Poll apply status (active only while applying)
   // ---------------------------------------------------------------------------
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, []);
 
-  // ---------------------------------------------------------------------------
-  // Poll apply status
-  // ---------------------------------------------------------------------------
-  const pollStatus = useCallback(async () => {
-    try {
+  const statusQuery = useQuery<ProfileApplyState>({
+    queryKey: ["profile-apply-status"],
+    queryFn: async () => {
       const resp = await authFetch(`${CGI_BASE}/apply_status.sh`);
-      if (!resp.ok) return;
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    },
+    enabled: polling,
+    refetchInterval: polling ? POLL_INTERVAL_MS : false,
+  });
 
-      const data: ProfileApplyState = await resp.json();
-      if (!mountedRef.current) return;
+  // Drive applyState from each polled status, honoring the idle-race guard.
+  useEffect(() => {
+    const data = statusQuery.data;
+    if (!data || !mountedRef.current) return;
 
-      // --- Idle-race handling -------------------------------------------------
-      if (data.status === "idle") {
-        if (awaitingStartRef.current) {
-          // Worker PID is live but its state file isn't written yet. Don't
-          // surface "idle" and don't stop — just wait for the next poll, with a
-          // bounded safety net.
-          idleStartPollsRef.current += 1;
-          if (idleStartPollsRef.current >= MAX_IDLE_START_POLLS) {
-            awaitingStartRef.current = false;
-            idleStartPollsRef.current = 0;
-            setError("Apply did not start. Please try again.");
-            stopPolling();
-          }
-          return;
+    // --- Idle-race handling -------------------------------------------------
+    if (data.status === "idle") {
+      if (awaitingStartRef.current) {
+        // Worker PID is live but its state file isn't written yet. Don't
+        // surface "idle" and don't stop — just wait for the next poll, with a
+        // bounded safety net.
+        idleStartPollsRef.current += 1;
+        if (idleStartPollsRef.current >= MAX_IDLE_START_POLLS) {
+          awaitingStartRef.current = false;
+          idleStartPollsRef.current = 0;
+          setError("Apply did not start. Please try again.");
+          setPolling(false);
         }
-        // Genuine reset-to-idle (not awaiting a fresh start): surface it and stop.
-        setApplyState(data);
-        stopPolling();
         return;
       }
-
-      // Any non-idle status means the worker is writing real progress now.
-      awaitingStartRef.current = false;
-      idleStartPollsRef.current = 0;
-
+      // Genuine reset-to-idle (not awaiting a fresh start): surface it and stop.
       setApplyState(data);
-
-      // Stop polling on terminal states
-      const terminalStates: ApplyStatus[] = ["complete", "partial", "failed"];
-      if (terminalStates.includes(data.status)) {
-        stopPolling();
-      }
-    } catch {
-      // Network error during poll — not critical, retry next interval
+      setPolling(false);
+      return;
     }
-  }, [stopPolling]);
 
-  // ---------------------------------------------------------------------------
-  // Start polling
-  // ---------------------------------------------------------------------------
-  const startPolling = useCallback(() => {
-    if (pollRef.current) return;
-    pollStatus(); // Immediate first poll
-    pollRef.current = setInterval(pollStatus, POLL_INTERVAL_MS);
-  }, [pollStatus]);
+    // Any non-idle status means the worker is writing real progress now.
+    awaitingStartRef.current = false;
+    idleStartPollsRef.current = 0;
+
+    setApplyState(data);
+
+    // Stop polling on terminal states
+    const terminalStates: ApplyStatus[] = ["complete", "partial", "failed"];
+    if (terminalStates.includes(data.status)) {
+      setPolling(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusQuery.data]);
 
   // ---------------------------------------------------------------------------
   // Apply a profile
   // ---------------------------------------------------------------------------
-  const applyProfile = useCallback(
-    async (id: string) => {
-      setError(null);
-      setApplyState(null);
-      awaitingStartRef.current = false;
-      idleStartPollsRef.current = 0;
 
-      try {
-        const resp = await authFetch(`${CGI_BASE}/apply.sh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id }),
-        });
+  const applyProfile = async (id: string) => {
+    setError(null);
+    setApplyState(null);
+    awaitingStartRef.current = false;
+    idleStartPollsRef.current = 0;
 
-        if (!resp.ok) {
-          setError("Failed to start profile apply (HTTP error)");
-          return;
-        }
+    try {
+      const resp = await authFetch(`${CGI_BASE}/apply.sh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
 
-        const data = await resp.json();
-        if (!mountedRef.current) return;
-
-        if (!data.success) {
-          if (data.error === "apply_in_progress") {
-            // Another apply is running — follow along
-            startPolling();
-            return;
-          }
-          setError(resolveErrorMessage(t, data.error, data.detail, "Failed to start apply"));
-          return;
-        }
-
-        // Success — begin polling for progress. Mark that we're awaiting the
-        // worker's first state write so a transient "idle" doesn't end the loop.
-        awaitingStartRef.current = true;
-        startPolling();
-      } catch (err) {
-        if (mountedRef.current) {
-          setError(
-            err instanceof Error ? err.message : "Failed to start profile apply"
-          );
-        }
+      if (!resp.ok) {
+        setError("Failed to start profile apply (HTTP error)");
+        return;
       }
-    },
-    [startPolling, t]
-  );
+
+      const data = await resp.json();
+      if (!mountedRef.current) return;
+
+      if (!data.success) {
+        if (data.error === "apply_in_progress") {
+          // Another apply is running — follow along
+          setPolling(true);
+          return;
+        }
+        setError(resolveErrorMessage(t, data.error, data.detail, "Failed to start apply"));
+        return;
+      }
+
+      // Success — begin polling for progress. Mark that we're awaiting the
+      // worker's first state write so a transient "idle" doesn't end the loop.
+      awaitingStartRef.current = true;
+      setPolling(true);
+    } catch (err) {
+      if (mountedRef.current) {
+        setError(
+          err instanceof Error ? err.message : "Failed to start profile apply",
+        );
+      }
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // Reset (dismiss results)
   // ---------------------------------------------------------------------------
-  const reset = useCallback(() => {
-    stopPolling();
+
+  const reset = () => {
+    setPolling(false);
     awaitingStartRef.current = false;
     idleStartPollsRef.current = 0;
     setApplyState(null);
     setError(null);
-  }, [stopPolling]);
+  };
 
   // ---------------------------------------------------------------------------
   // Check for in-progress apply on mount (in case user navigated away)
   // ---------------------------------------------------------------------------
+
   useEffect(() => {
     const checkExisting = async () => {
       try {
@@ -209,7 +194,7 @@ export function useProfileApply(): UseProfileApplyReturn {
 
         if (data.status === "applying") {
           setApplyState(data);
-          startPolling();
+          setPolling(true);
         } else if (
           data.status === "complete" ||
           data.status === "partial" ||
@@ -223,7 +208,6 @@ export function useProfileApply(): UseProfileApplyReturn {
       }
     };
     checkExisting();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const isApplying = applyState?.status === "applying";

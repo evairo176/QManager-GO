@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -10,92 +10,48 @@ const API_URL = "/cgi-bin/quecmanager/network/video_optimizer.sh";
 
 export function useCdnHostlist() {
   const { t } = useTranslation("errors");
-  const [domains, setDomains] = useState<string[]>([]);
-  const [defaultDomains, setDefaultDomains] = useState<string[]>([]);
-  const [count, setCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const fetchHostlist = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery<HostlistResponse>({
+    queryKey: ["cdn-hostlist"],
+    queryFn: async () => {
       const response = await authFetch(`${API_URL}?section=hostlist`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data: HostlistResponse = await response.json();
-      if (!mountedRef.current) return;
 
       if (!data.success) {
-        setError("Failed to load hostname list");
-        return;
+        throw new Error("Failed to load hostname list");
       }
 
-      setDomains(data.domains);
-      setDefaultDomains(data.default_domains ?? []);
-      setCount(data.count);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch hostname list"
-      );
-    } finally {
-      if (mountedRef.current && !silent) setIsLoading(false);
-    }
-  }, []);
-
-  const saveHostlist = useCallback(
-    async (newDomains: string[]): Promise<boolean> => {
-      setIsSaving(true);
-      setError(null);
-
-      try {
-        const response = await authFetch(API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "save_hostlist", domains: newDomains }),
-        });
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
-        if (!data.success) {
-          setError(resolveErrorMessage(t, undefined, data.detail, "Failed to save hostname list"));
-          return false;
-        }
-
-        await fetchHostlist(true);
-        return true;
-      } catch (err) {
-        if (mountedRef.current) {
-          setError(
-            err instanceof Error ? err.message : "Failed to save hostname list"
-          );
-        }
-        return false;
-      } finally {
-        if (mountedRef.current) setIsSaving(false);
-      }
+      return data;
     },
-    [fetchHostlist, t]
-  );
+  });
 
-  const restoreDefaults = useCallback(async (): Promise<boolean> => {
-    setIsRestoring(true);
-    setError(null);
+  const saveMutation = useMutation({
+    mutationFn: async (newDomains: string[]): Promise<boolean> => {
+      const response = await authFetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save_hostlist", domains: newDomains }),
+      });
 
-    try {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(
+          resolveErrorMessage(t, undefined, data.detail, "Failed to save hostname list")
+        );
+      }
+      return true;
+    },
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (): Promise<boolean> => {
       const response = await authFetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -106,38 +62,49 @@ export function useCdnHostlist() {
 
       const data = await response.json();
       if (!data.success) {
-        setError(resolveErrorMessage(t, undefined, data.detail, "Failed to restore defaults"));
-        return false;
-      }
-
-      await fetchHostlist(true);
-      return true;
-    } catch (err) {
-      if (mountedRef.current) {
-        setError(
-          err instanceof Error ? err.message : "Failed to restore defaults"
+        throw new Error(
+          resolveErrorMessage(t, undefined, data.detail, "Failed to restore defaults")
         );
       }
-      return false;
-    } finally {
-      if (mountedRef.current) setIsRestoring(false);
-    }
-  }, [fetchHostlist, t]);
+      return true;
+    },
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
 
-  useEffect(() => {
-    fetchHostlist();
-  }, [fetchHostlist]);
+  const saveHostlist = async (newDomains: string[]): Promise<boolean> => {
+    try {
+      return await saveMutation.mutateAsync(newDomains);
+    } catch (err) {
+      return false;
+    }
+  };
+
+  const restoreDefaults = async (): Promise<boolean> => {
+    try {
+      return await restoreMutation.mutateAsync();
+    } catch {
+      return false;
+    }
+  };
 
   return {
-    domains,
-    defaultDomains,
-    count,
-    isLoading,
-    isSaving,
-    isRestoring,
-    error,
+    domains: query.data?.domains ?? [],
+    defaultDomains: query.data?.default_domains ?? [],
+    count: query.data?.count ?? 0,
+    isLoading: query.isLoading || query.isPending,
+    isSaving: saveMutation.isPending || restoreMutation.isPending,
+    isRestoring: restoreMutation.isPending,
+    error:
+      query.error?.message ??
+      saveMutation.error?.message ??
+      restoreMutation.error?.message ??
+      null,
     saveHostlist,
     restoreDefaults,
-    refresh: fetchHostlist,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

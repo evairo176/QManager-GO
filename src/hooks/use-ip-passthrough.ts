@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -64,132 +64,80 @@ export interface UseIpPassthroughReturn {
 
 export function useIpPassthrough(): UseIpPassthroughReturn {
   const { t } = useTranslation("errors");
-  const [passthroughMode, setPassthroughMode] =
-    useState<PassthroughMode | null>(null);
-  const [targetMac, setTargetMac] = useState<string | null>(null);
-  const [ipptNat, setIpptNat] = useState<IpptNat | null>(null);
-  const [usbMode, setUsbMode] = useState<UsbMode | null>(null);
-  const [dnsProxy, setDnsProxy] = useState<DnsProxy | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Fetch current settings
-  // ---------------------------------------------------------------------------
-  const fetchSettings = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery<IpPassthroughSettingsResponse>({
+    queryKey: ["ip-passthrough"],
+    queryFn: async () => {
       const resp = await authFetch(CGI_ENDPOINT);
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
 
       const data: IpPassthroughSettingsResponse = await resp.json();
-      if (!mountedRef.current) return;
 
       if (!data.success) {
-        setError(resolveErrorMessage(t, data.error, undefined, "Failed to fetch IP Passthrough settings"));
-        return;
-      }
-
-      setPassthroughMode(data.passthrough_mode);
-      setTargetMac(data.target_mac);
-      setIpptNat(data.ippt_nat);
-      setUsbMode(data.usb_mode);
-      setDnsProxy(data.dns_proxy);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to fetch IP Passthrough settings"
-      );
-    } finally {
-      if (mountedRef.current && !silent) {
-        setIsLoading(false);
-      }
-    }
-  }, [t]);
-
-  // Fetch on mount
-  useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
-
-  // ---------------------------------------------------------------------------
-  // Apply all IP Passthrough settings (backend reboots immediately after)
-  // ---------------------------------------------------------------------------
-  const saveSettings = useCallback(
-    async (data: IpPassthroughApplyData): Promise<boolean> => {
-      setError(null);
-      setIsSaving(true);
-
-      try {
-        const request: IpPassthroughSaveRequest = {
-          action: "apply",
-          passthrough_mode: data.passthrough_mode,
-          target_mac: data.target_mac,
-          ippt_nat: data.ippt_nat,
-          usb_mode: data.usb_mode,
-          dns_proxy: data.dns_proxy,
-        };
-
-        const resp = await authFetch(CGI_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(request),
-        });
-
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
-
-        const result: IpPassthroughSaveResponse = await resp.json();
-        if (!mountedRef.current) return false;
-
-        if (!result.success) {
-          setError(resolveErrorMessage(t, result.error, result.detail, "Failed to apply settings"));
-          return false;
-        }
-
-        return true;
-      } catch (err) {
-        if (!mountedRef.current) return false;
-        setError(
-          err instanceof Error ? err.message : "Failed to apply settings"
+        throw new Error(
+          resolveErrorMessage(t, data.error, undefined, "Failed to fetch IP Passthrough settings")
         );
-        return false;
-      } finally {
-        if (mountedRef.current) {
-          setIsSaving(false);
-        }
       }
+
+      return data;
     },
-    [t]
-  );
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: IpPassthroughApplyData): Promise<boolean> => {
+      const request: IpPassthroughSaveRequest = {
+        action: "apply",
+        passthrough_mode: data.passthrough_mode,
+        target_mac: data.target_mac,
+        ippt_nat: data.ippt_nat,
+        usb_mode: data.usb_mode,
+        dns_proxy: data.dns_proxy,
+      };
+
+      const resp = await authFetch(CGI_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      }
+
+      const result: IpPassthroughSaveResponse = await resp.json();
+
+      if (!result.success) {
+        throw new Error(
+          resolveErrorMessage(t, result.error, result.detail, "Failed to apply settings")
+        );
+      }
+
+      return true;
+    },
+  });
+
+  const saveSettings = async (data: IpPassthroughApplyData): Promise<boolean> => {
+    try {
+      return await saveMutation.mutateAsync(data);
+    } catch {
+      return false;
+    }
+  };
 
   return {
-    passthroughMode,
-    targetMac,
-    ipptNat,
-    usbMode,
-    dnsProxy,
-    isLoading,
-    isSaving,
-    error,
+    passthroughMode: query.data?.passthrough_mode ?? null,
+    targetMac: query.data?.target_mac ?? null,
+    ipptNat: query.data?.ippt_nat ?? null,
+    usbMode: query.data?.usb_mode ?? null,
+    dnsProxy: query.data?.dns_proxy ?? null,
+    isLoading: query.isLoading || query.isPending,
+    isSaving: saveMutation.isPending,
+    error: query.error?.message ?? saveMutation.error?.message ?? null,
     saveSettings,
-    refresh: fetchSettings,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

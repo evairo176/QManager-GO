@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -40,8 +41,6 @@ export interface UseAlertsReturn {
 
 export function useAlerts(): UseAlertsReturn {
   const { t } = useTranslation("errors");
-  const [state, setState] = useState<AlertsState | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [testingChannel, setTestingChannel] = useState<AlertChannel | null>(
     null,
@@ -67,55 +66,54 @@ export function useAlerts(): UseAlertsReturn {
   // ---------------------------------------------------------------------------
   // Fetch combined state
   // ---------------------------------------------------------------------------
-  const fetchState = useCallback(
-    async (silent = false) => {
-      if (!silent) setIsLoading(true);
-      setError(null);
 
-      try {
-        const resp = await authFetch(CGI_ENDPOINT);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+  const query = useQuery<{
+    success: boolean;
+    channels: AlertsState["channels"];
+    routing: AlertsState["routing"];
+    capabilities: AlertsState["capabilities"];
+    reboots?: AlertsState["reboots"];
+    error?: string;
+  }>({
+    queryKey: ["alerts-state"],
+    queryFn: async () => {
+      const resp = await authFetch(CGI_ENDPOINT);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      return resp.json();
+    },
+  });
 
-        const json = await resp.json();
-        if (!mountedRef.current) return;
+  const json = query.data;
 
-        if (!json.success) {
-          setError(
-            resolveErrorMessage(
-              t,
-              json.error,
-              undefined,
-              "Failed to load alert settings",
-            ),
-          );
-          return;
-        }
-
-        setState({
+  const state: AlertsState | null =
+    json && json.success
+      ? {
           channels: json.channels,
           routing: json.routing,
           capabilities: json.capabilities,
           reboots: Array.isArray(json.reboots) ? json.reboots : [],
-        });
-      } catch (err) {
-        if (!mountedRef.current) return;
-        setError(
-          err instanceof Error ? err.message : "Failed to load alert settings",
-        );
-      } finally {
-        if (mountedRef.current && !silent) setIsLoading(false);
-      }
-    },
-    [t],
-  );
+        }
+      : null;
 
-  useEffect(() => {
-    fetchState();
-  }, [fetchState]);
+  const queryError = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to load alert settings"
+    : json && !json.success
+      ? resolveErrorMessage(
+          t,
+          json.error,
+          undefined,
+          "Failed to load alert settings",
+        )
+      : null;
+
+  const effectiveError = queryError ?? error;
 
   // ---------------------------------------------------------------------------
   // Save (one atomic POST covering both channels + routing)
   // ---------------------------------------------------------------------------
+
   const saveSettings = useCallback(
     async (payload: AlertsSavePayload): Promise<boolean> => {
       setError(null);
@@ -143,7 +141,7 @@ export function useAlerts(): UseAlertsReturn {
           return false;
         }
 
-        await fetchState(true);
+        await query.refetch();
         return true;
       } catch (err) {
         if (!mountedRef.current) return false;
@@ -153,12 +151,13 @@ export function useAlerts(): UseAlertsReturn {
         if (mountedRef.current) setIsSaving(false);
       }
     },
-    [fetchState, t],
+    [query, t],
   );
 
   // ---------------------------------------------------------------------------
   // Per-channel test send (real path, gated on saved config by the caller)
   // ---------------------------------------------------------------------------
+
   const sendTest = useCallback(
     async (channel: AlertChannel): Promise<boolean> => {
       setError(null);
@@ -200,6 +199,7 @@ export function useAlerts(): UseAlertsReturn {
   // ---------------------------------------------------------------------------
   // msmtp install lifecycle (email channel only)
   // ---------------------------------------------------------------------------
+
   const stopInstallPolling = useCallback(() => {
     if (installPollRef.current) {
       clearInterval(installPollRef.current);
@@ -220,12 +220,12 @@ export function useAlerts(): UseAlertsReturn {
       setInstallResult(data);
       if (data.status === "complete" || data.status === "error") {
         stopInstallPolling();
-        await fetchState(true);
+        await query.refetch();
       }
     } catch {
       // Silently retry on the next poll tick.
     }
-  }, [stopInstallPolling, fetchState]);
+  }, [stopInstallPolling, query]);
 
   const runInstall = useCallback(async () => {
     setInstallResult({
@@ -268,7 +268,7 @@ export function useAlerts(): UseAlertsReturn {
         );
         return false;
       }
-      await fetchState(true);
+      await query.refetch();
       return true;
     } catch (err) {
       if (mountedRef.current) {
@@ -278,20 +278,22 @@ export function useAlerts(): UseAlertsReturn {
     } finally {
       if (mountedRef.current) setIsUninstalling(false);
     }
-  }, [fetchState, t]);
+  }, [query, t]);
 
   return {
     state,
-    isLoading,
+    isLoading: query.isLoading || query.isPending,
     isSaving,
     testingChannel,
     isUninstalling,
     installResult,
-    error,
+    error: effectiveError,
     saveSettings,
     sendTest,
     runInstall,
     uninstall,
-    refresh: fetchState,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

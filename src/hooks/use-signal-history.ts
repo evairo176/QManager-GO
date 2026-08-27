@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type { SignalHistoryEntry } from "@/types/modem-status";
 
@@ -103,65 +103,40 @@ export function useSignalHistory(
 ): UseSignalHistoryReturn {
   const { pollInterval = DEFAULT_POLL_INTERVAL, enabled = true } = options;
 
-  const [raw, setRaw] = useState<SignalHistoryEntry[]>([]);
-  const [chartData, setChartData] = useState<SignalChartPoint[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const mountedRef = useRef(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const fetchHistory = useCallback(async () => {
-    try {
+  const query = useQuery<SignalHistoryEntry[]>({
+    queryKey: ["signal-history"],
+    queryFn: async () => {
       const response = await authFetch(HISTORY_ENDPOINT);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+      return response.json();
+    },
+    refetchInterval: enabled ? pollInterval : false,
+    enabled,
+  });
 
-      const json: SignalHistoryEntry[] = await response.json();
-      if (!mountedRef.current) return;
+  const raw = query.data ?? [];
 
-      setRaw(json);
+  // Chart-ready transformation: keep the last CHART_POINTS entries, computing
+  // relative time labels against the newest entry's timestamp.
+  let chartData: SignalChartPoint[] = [];
+  if (raw.length > 0) {
+    const recent = raw.slice(-CHART_POINTS);
+    const latestTs = recent[recent.length - 1].ts;
+    chartData = recent.map((entry) => toChartPoint(entry, latestTs));
+  }
 
-      const recent = json.slice(-CHART_POINTS);
-      if (recent.length === 0) {
-        setChartData([]);
-      } else {
-        const latestTs = recent[recent.length - 1].ts;
-        setChartData(recent.map((entry) => toChartPoint(entry, latestTs)));
-      }
+  const error = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to fetch signal history"
+    : null;
 
-      setError(null);
-      setIsLoading(false);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      const message =
-        err instanceof Error ? err.message : "Failed to fetch signal history";
-      setError(message);
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    mountedRef.current = true;
-
-    if (!enabled) {
-      return () => {
-        mountedRef.current = false;
-      };
-    }
-
-    fetchHistory();
-    intervalRef.current = setInterval(fetchHistory, pollInterval);
-
-    return () => {
-      mountedRef.current = false;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [fetchHistory, pollInterval, enabled]);
-
-  return { chartData, raw, isLoading, error };
+  return {
+    chartData,
+    raw,
+    isLoading: query.isLoading || query.isPending,
+    error,
+  };
 }

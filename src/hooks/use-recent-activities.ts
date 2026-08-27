@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type { NetworkEvent } from "@/types/modem-status";
 
@@ -52,78 +52,36 @@ export function useRecentActivities(
     maxEvents = 20,
   } = options;
 
-  const [events, setEvents] = useState<NetworkEvent[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const mountedRef = useRef(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const hasLoadedOnce = useRef(false);
-
-  const fetchEvents = useCallback(async () => {
-    if (hasLoadedOnce.current) {
-      setIsRefreshing(true);
-    }
-
-    try {
+  const query = useQuery<NetworkEvent[]>({
+    queryKey: ["recent-activities"],
+    queryFn: async () => {
       const response = await authFetch(EVENTS_ENDPOINT);
-
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-
       const json: NetworkEvent[] = await response.json();
-
-      if (!mountedRef.current) return;
-
       // Events come oldest-first from the file; reverse for newest-first display
-      const reversed = [...json].reverse().slice(0, maxEvents);
-      setEvents(reversed);
-      setError(null);
-      hasLoadedOnce.current = true;
-    } catch (err) {
-      if (!mountedRef.current) return;
+      return [...json].reverse().slice(0, maxEvents);
+    },
+    refetchInterval: enabled ? pollInterval : false,
+    enabled,
+  });
 
-      const message =
-        err instanceof Error ? err.message : "Failed to fetch events";
-      setError(message);
-    } finally {
-      if (mountedRef.current) {
-        setIsLoading(false);
-        setIsRefreshing(false);
-      }
-    }
-  }, [maxEvents]);
+  const events = query.data ?? [];
 
-  useEffect(() => {
-    mountedRef.current = true;
+  const error = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to fetch events"
+    : null;
 
-    if (!enabled) {
-      return () => {
-        mountedRef.current = false;
-      };
-    }
-
-    fetchEvents();
-    intervalRef.current = setInterval(fetchEvents, pollInterval);
-
-    return () => {
-      mountedRef.current = false;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [fetchEvents, pollInterval, enabled]);
-
-  const refresh = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-    fetchEvents();
-    intervalRef.current = setInterval(fetchEvents, pollInterval);
-  }, [fetchEvents, pollInterval]);
-
-  return { events, isLoading, isRefreshing, error, refresh };
+  return {
+    events,
+    isLoading: query.isLoading || query.isPending,
+    isRefreshing: query.isFetching && !(query.isLoading || query.isPending),
+    error,
+    refresh: () => {
+      void query.refetch();
+    },
+  };
 }

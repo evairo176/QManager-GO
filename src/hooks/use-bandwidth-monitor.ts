@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useCallback, useRef, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type {
   BandwidthSettings,
@@ -13,8 +14,8 @@ import type {
 // =============================================================================
 // useBandwidthMonitor — WebSocket hook for live bandwidth data (Dashboard)
 // =============================================================================
-// Fetches bandwidth settings via HTTP, then connects to the WebSocket server
-// when bandwidth monitoring is enabled and running.
+// Fetches bandwidth settings via HTTP (TanStack Query), then connects to the
+// WebSocket server when bandwidth monitoring is enabled and running.
 //
 // Returns rolling chart data (15 seconds), current speeds,
 // per-interface breakdown, and connection state.
@@ -48,11 +49,29 @@ export interface UseBandwidthMonitorReturn {
   wsError: string | null;
 }
 
+/** Shape returned by the settings CGI (non-fatal if malformed). */
+interface BandwidthSettingsResponse {
+  success?: boolean;
+  settings?: BandwidthSettings;
+  status?: BandwidthStatus;
+}
+
 export function useBandwidthMonitor(): UseBandwidthMonitorReturn {
-  // ─── Settings state (from HTTP) ────────────────────────────────────────────
-  const [settings, setSettings] = useState<BandwidthSettings | null>(null);
-  const [status, setStatus] = useState<BandwidthStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // ─── Settings state (from HTTP, via TanStack Query) ───────────────────────
+  const settingsQuery = useQuery<BandwidthSettingsResponse>({
+    queryKey: ["bandwidth-monitor-settings"],
+    queryFn: async () => {
+      const resp = await authFetch(CGI_ENDPOINT);
+      if (!resp.ok) return {};
+      return resp.json();
+    },
+    // Settings fetch failure is non-fatal — feature just won't connect.
+    retry: false,
+  });
+
+  const settings = settingsQuery.data?.settings ?? null;
+  const status = settingsQuery.data?.status ?? null;
+  const isLoading = settingsQuery.isLoading || settingsQuery.isPending;
 
   // ─── WebSocket state ───────────────────────────────────────────────────────
   const [chartData, setChartData] = useState<BandwidthChartPoint[]>([]);
@@ -79,27 +98,6 @@ export function useBandwidthMonitor(): UseBandwidthMonitorReturn {
       mountedRef.current = false;
     };
   }, []);
-
-  // ─── Fetch settings via HTTP ───────────────────────────────────────────────
-
-  const fetchSettings = useCallback(async () => {
-    try {
-      const resp = await authFetch(CGI_ENDPOINT);
-      if (!resp.ok) return;
-      const json = await resp.json();
-      if (!mountedRef.current || !json.success) return;
-      setSettings(json.settings);
-      setStatus(json.status);
-    } catch {
-      // Settings fetch failure is non-fatal — feature just won't connect
-    } finally {
-      if (mountedRef.current) setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
 
   // ─── Buffer → state sync (coalesced to avoid excessive re-renders) ────────
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -64,209 +64,158 @@ export interface UseConnectionScenariosReturn {
 
 export function useConnectionScenarios(): UseConnectionScenariosReturn {
   const { t } = useTranslation("errors");
-  const [activeScenarioId, setActiveScenarioId] = useState("balanced");
-  const [customScenarios, setCustomScenarios] = useState<StoredScenario[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isActivating, setIsActivating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Fetch scenarios list + active scenario from backend
-  // ---------------------------------------------------------------------------
-  const fetchScenarios = useCallback(async () => {
-    try {
+  const query = useQuery<ScenarioListResponse>({
+    queryKey: ["connection-scenarios"],
+    queryFn: async () => {
       const resp = await authFetch(`${CGI_BASE}/list.sh`);
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
+      return resp.json() as Promise<ScenarioListResponse>;
+    },
+  });
 
-      const data: ScenarioListResponse = await resp.json();
-      if (!mountedRef.current) return;
+  const activateMutation = useMutation({
+    mutationFn: async (args: { id: string; config?: ScenarioConfig }): Promise<boolean> => {
+      const { id, config } = args;
+      // Build POST body — default scenarios only need id,
+      // custom scenarios include full config for backend to apply
+      const body: Record<string, string> = { id };
 
-      setCustomScenarios(data.scenarios || []);
-      setActiveScenarioId(data.active_scenario_id || "balanced");
-      setError(null);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        err instanceof Error ? err.message : "Failed to load scenarios",
-      );
-    } finally {
-      if (mountedRef.current) {
-        setIsLoading(false);
+      if (config && id.startsWith("custom-")) {
+        body.mode = config.atModeValue;
+        if (config.lte_bands) body.lte_bands = config.lte_bands;
+        if (config.nsa_nr_bands) body.nsa_nr_bands = config.nsa_nr_bands;
+        if (config.sa_nr_bands) body.sa_nr_bands = config.sa_nr_bands;
       }
+
+      const resp = await authFetch(`${CGI_BASE}/activate.sh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      }
+
+      const data: ScenarioActivateResponse = await resp.json();
+
+      if (!data.success) {
+        throw new Error(
+          resolveErrorMessage(t, data.error, data.detail, "Failed to activate scenario")
+        );
+      }
+
+      return true;
+    },
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (
+      scenario: Omit<StoredScenario, "id"> & { id?: string }
+    ): Promise<string | null> => {
+      const resp = await authFetch(`${CGI_BASE}/save.sh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(scenario),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      }
+
+      const data: ScenarioApiResponse = await resp.json();
+
+      if (!data.success) {
+        throw new Error(
+          resolveErrorMessage(t, data.error, data.detail, "Failed to save scenario")
+        );
+      }
+
+      return data.id || null;
+    },
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string): Promise<boolean> => {
+      const resp = await authFetch(`${CGI_BASE}/delete.sh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      }
+
+      const data: ScenarioApiResponse = await resp.json();
+
+      if (!data.success) {
+        throw new Error(
+          resolveErrorMessage(t, data.error, data.detail, "Failed to delete scenario")
+        );
+      }
+
+      return true;
+    },
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
+
+  const activateScenario = async (
+    id: string,
+    config?: ScenarioConfig
+  ): Promise<boolean> => {
+    try {
+      return await activateMutation.mutateAsync({ id, config });
+    } catch {
+      return false;
     }
-  }, []);
+  };
 
-  // Initial fetch
-  useEffect(() => {
-    fetchScenarios();
-  }, [fetchScenarios]);
+  const saveCustomScenario = async (
+    scenario: Omit<StoredScenario, "id"> & { id?: string }
+  ): Promise<string | null> => {
+    try {
+      return await saveMutation.mutateAsync(scenario);
+    } catch {
+      return null;
+    }
+  };
 
-  // ---------------------------------------------------------------------------
-  // Activate a scenario
-  // ---------------------------------------------------------------------------
-  const activateScenario = useCallback(
-    async (id: string, config?: ScenarioConfig): Promise<boolean> => {
-      setError(null);
-      setIsActivating(true);
-
-      try {
-        // Build POST body — default scenarios only need id,
-        // custom scenarios include full config for backend to apply
-        const body: Record<string, string> = { id };
-
-        if (config && id.startsWith("custom-")) {
-          body.mode = config.atModeValue;
-          if (config.lte_bands) body.lte_bands = config.lte_bands;
-          if (config.nsa_nr_bands) body.nsa_nr_bands = config.nsa_nr_bands;
-          if (config.sa_nr_bands) body.sa_nr_bands = config.sa_nr_bands;
-        }
-
-        const resp = await authFetch(`${CGI_BASE}/activate.sh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
-
-        const data: ScenarioActivateResponse = await resp.json();
-        if (!mountedRef.current) return false;
-
-        if (!data.success) {
-          setError(resolveErrorMessage(t, data.error, data.detail, "Failed to activate scenario"));
-          return false;
-        }
-
-        // Optimistic update — backend confirmed success
-        setActiveScenarioId(id);
-        return true;
-      } catch (err) {
-        if (!mountedRef.current) return false;
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to activate scenario",
-        );
-        return false;
-      } finally {
-        if (mountedRef.current) {
-          setIsActivating(false);
-        }
-      }
-    },
-    [t],
-  );
-
-  // ---------------------------------------------------------------------------
-  // Save a custom scenario (create or update)
-  // ---------------------------------------------------------------------------
-  const saveCustomScenario = useCallback(
-    async (scenario: Omit<StoredScenario, "id"> & { id?: string }): Promise<string | null> => {
-      setError(null);
-
-      try {
-        const resp = await authFetch(`${CGI_BASE}/save.sh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(scenario),
-        });
-
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
-
-        const data: ScenarioApiResponse = await resp.json();
-        if (!mountedRef.current) return null;
-
-        if (!data.success) {
-          setError(resolveErrorMessage(t, data.error, data.detail, "Failed to save scenario"));
-          return null;
-        }
-
-        // Refresh the list from backend to pick up the new/updated scenario
-        await fetchScenarios();
-        return data.id || null;
-      } catch (err) {
-        if (!mountedRef.current) return null;
-        setError(
-          err instanceof Error ? err.message : "Failed to save scenario",
-        );
-        return null;
-      }
-    },
-    [fetchScenarios, t],
-  );
-
-  // ---------------------------------------------------------------------------
-  // Delete a custom scenario
-  // ---------------------------------------------------------------------------
-  const deleteCustomScenario = useCallback(
-    async (id: string): Promise<boolean> => {
-      setError(null);
-
-      try {
-        const resp = await authFetch(`${CGI_BASE}/delete.sh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id }),
-        });
-
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
-
-        const data: ScenarioApiResponse = await resp.json();
-        if (!mountedRef.current) return false;
-
-        if (!data.success) {
-          setError(resolveErrorMessage(t, data.error, data.detail, "Failed to delete scenario"));
-          return false;
-        }
-
-        // Refresh the list from backend
-        await fetchScenarios();
-        return true;
-      } catch (err) {
-        if (!mountedRef.current) return false;
-        setError(
-          err instanceof Error ? err.message : "Failed to delete scenario",
-        );
-        return false;
-      }
-    },
-    [fetchScenarios, t],
-  );
-
-  // ---------------------------------------------------------------------------
-  // Manual refresh
-  // ---------------------------------------------------------------------------
-  const refresh = useCallback(() => {
-    setIsLoading(true);
-    fetchScenarios();
-  }, [fetchScenarios]);
+  const deleteCustomScenario = async (id: string): Promise<boolean> => {
+    try {
+      return await deleteMutation.mutateAsync(id);
+    } catch {
+      return false;
+    }
+  };
 
   return {
-    activeScenarioId,
-    customScenarios,
-    isLoading,
-    isActivating,
-    error,
+    activeScenarioId: query.data?.active_scenario_id || "balanced",
+    customScenarios: query.data?.scenarios || [],
+    isLoading: query.isLoading || query.isPending,
+    isActivating: activateMutation.isPending,
+    error:
+      query.error?.message ??
+      activateMutation.error?.message ??
+      saveMutation.error?.message ??
+      deleteMutation.error?.message ??
+      null,
     activateScenario,
     saveCustomScenario,
     deleteCustomScenario,
-    refresh,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

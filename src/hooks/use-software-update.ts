@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -83,19 +84,17 @@ export interface UseSoftwareUpdateReturn {
 
 export function useSoftwareUpdate(): UseSoftwareUpdateReturn {
   const { t } = useTranslation("errors");
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ status: "idle" });
-  const [isLoading, setIsLoading] = useState(true);
   const [isChecking, setIsChecking] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [downloadState, setDownloadState] = useState<DownloadState | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isInstallStalled, setIsInstallStalled] = useState(false);
   const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const [statusPolling, setStatusPolling] = useState(false);
+  // Mirrored download state (from backend poll / update info)
+  const [downloadState, setDownloadState] = useState<DownloadState | null>(null);
 
   const mountedRef = useRef(true);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const installStallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastStatusSignatureRef = useRef<string>("");
 
@@ -122,162 +121,140 @@ export function useSoftwareUpdate(): UseSoftwareUpdateReturn {
     if (stored) setLastChecked(stored);
     return () => {
       mountedRef.current = false;
-      if (pollRef.current) clearInterval(pollRef.current);
       clearInstallStallTimer();
     };
   }, [clearInstallStallTimer]);
 
   // ---------------------------------------------------------------------------
-  // Poll download status during background download
+  // Fetch update info from CGI (on mount + manual check)
   // ---------------------------------------------------------------------------
-  const startDownloadPolling = useCallback(() => {
-    if (pollRef.current) clearInterval(pollRef.current);
 
-    pollRef.current = setInterval(async () => {
-      try {
-        const resp = await authFetch(`${CGI_ENDPOINT}?action=status`);
-        if (!resp.ok) return;
-
-        const json = await resp.json();
-        if (!mountedRef.current) return;
-
-        setDownloadState(json as DownloadState);
-
-        if (json.status === "ready") {
-          if (pollRef.current) clearInterval(pollRef.current);
-          pollRef.current = null;
-          setIsDownloading(false);
-        }
-
-        if (json.status === "error") {
-          if (pollRef.current) clearInterval(pollRef.current);
-          pollRef.current = null;
-          setIsDownloading(false);
-          setError(resolveErrorMessage(t, undefined, json.message, "Download failed"));
-        }
-      } catch {
-        // Silently retry on next interval
-      }
-    }, POLL_INTERVAL);
-  }, [t]);
-
-  // ---------------------------------------------------------------------------
-  // Fetch update info from CGI
-  // ---------------------------------------------------------------------------
-  const fetchUpdateInfo = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    setError(null);
-
-    try {
+  const infoQuery = useQuery<UpdateInfo>({
+    queryKey: ["software-update-info"],
+    queryFn: async () => {
       const resp = await authFetch(CGI_ENDPOINT);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-
       const json = await resp.json();
-      if (!mountedRef.current) return;
-
       if (!json.success) {
-        setError(resolveErrorMessage(t, json.error, json.detail, "Failed to check for updates"));
-        return;
+        throw new Error(
+          resolveErrorMessage(t, json.error, json.detail, "Failed to check for updates"),
+        );
       }
+      return json as UpdateInfo;
+    },
+  });
 
-      setUpdateInfo(json as UpdateInfo);
+  const updateInfo = infoQuery.data ?? null;
 
-      // Sync download state from backend
-      const info = json as UpdateInfo;
-      if (info.download_state) {
-        setDownloadState(info.download_state);
-        if (info.download_state.status === "downloading" || info.download_state.status === "verifying") {
-          setIsDownloading(true);
-          startDownloadPolling();
-        }
-      }
-
-      // Update last checked timestamp
-      const now = new Date().toISOString();
-      localStorage.setItem(LAST_CHECKED_KEY, now);
-      setLastChecked(now);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to check for updates");
-    } finally {
-      if (mountedRef.current && !silent) setIsLoading(false);
-    }
-  }, [startDownloadPolling, t]);
-
-  // Fetch on mount
+  // Sync download state + polling from fetched info
   useEffect(() => {
-    fetchUpdateInfo();
-  }, [fetchUpdateInfo]);
+    const info = infoQuery.data;
+    if (!info?.download_state) return;
+    setDownloadState(info.download_state);
+    if (
+      info.download_state.status === "downloading" ||
+      info.download_state.status === "verifying"
+    ) {
+      setIsDownloading(true);
+      setStatusPolling(true);
+    }
+    // Update last checked timestamp
+    const now = new Date().toISOString();
+    localStorage.setItem(LAST_CHECKED_KEY, now);
+    setLastChecked(now);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [infoQuery.data]);
+
+  const infoError = infoQuery.error
+    ? infoQuery.error instanceof Error
+      ? infoQuery.error.message
+      : "Failed to check for updates"
+    : null;
+
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const error = infoError ?? actionError;
 
   // ---------------------------------------------------------------------------
-  // Poll update status during install/rollback
+  // Poll update status during download / install / rollback
   // ---------------------------------------------------------------------------
-  const startPolling = useCallback(() => {
-    if (pollRef.current) clearInterval(pollRef.current);
 
-    pollRef.current = setInterval(async () => {
-      try {
-        const resp = await authFetch(`${CGI_ENDPOINT}?action=status`);
-        if (!resp.ok) return;
+  const statusQuery = useQuery<UpdateStatus>({
+    queryKey: ["software-update-status"],
+    queryFn: async () => {
+      const resp = await authFetch(`${CGI_ENDPOINT}?action=status`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    },
+    enabled: statusPolling,
+    refetchInterval: statusPolling ? POLL_INTERVAL : false,
+  });
 
-        const json: UpdateStatus = await resp.json();
-        if (!mountedRef.current) return;
+  // Drive status state from each poll
+  useEffect(() => {
+    const json = statusQuery.data;
+    if (!json) return;
 
-        setUpdateStatus(json);
+    setUpdateStatus(json);
 
-        const signature = `${json.status}|${json.message ?? ""}|${json.version ?? ""}`;
-        if (signature !== lastStatusSignatureRef.current) {
-          lastStatusSignatureRef.current = signature;
-          setIsInstallStalled(false);
-          if (json.status === "installing") {
-            armInstallStallTimer();
-          } else {
-            clearInstallStallTimer();
-          }
-        }
-
-        if (json.status === "rebooting") {
-          clearInstallStallTimer();
-          setIsInstallStalled(false);
-          // Stop polling, navigate to reboot page
-          if (pollRef.current) clearInterval(pollRef.current);
-          pollRef.current = null;
-          enterRebootFlow("software_update");
-        }
-
-        if (json.status === "error") {
-          clearInstallStallTimer();
-          setIsInstallStalled(false);
-          if (pollRef.current) clearInterval(pollRef.current);
-          pollRef.current = null;
-          setIsUpdating(false);
-          setError(resolveErrorMessage(t, undefined, json.message, "Update failed"));
-        }
-      } catch {
+    const signature = `${json.status}|${json.message ?? ""}|${json.version ?? ""}`;
+    if (signature !== lastStatusSignatureRef.current) {
+      lastStatusSignatureRef.current = signature;
+      setIsInstallStalled(false);
+      if (json.status === "installing") {
+        armInstallStallTimer();
+      } else {
         clearInstallStallTimer();
-        // Device may be rebooting — stop polling and redirect
-        if (pollRef.current) clearInterval(pollRef.current);
-        pollRef.current = null;
-
-        enterRebootFlow("software_update");
       }
-    }, POLL_INTERVAL);
-  }, [armInstallStallTimer, clearInstallStallTimer, t]);
+    }
+
+    if (json.status === "rebooting") {
+      clearInstallStallTimer();
+      setIsInstallStalled(false);
+      // Stop polling, navigate to reboot page
+      setStatusPolling(false);
+      enterRebootFlow("software_update");
+    }
+
+    if (json.status === "error") {
+      clearInstallStallTimer();
+      setIsInstallStalled(false);
+      setStatusPolling(false);
+      setIsUpdating(false);
+      setActionError(
+        resolveErrorMessage(t, undefined, json.message, "Update failed"),
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusQuery.data]);
+
+  // Network error while polling — device may be rebooting
+  useEffect(() => {
+    if (!statusPolling) return;
+    if (statusQuery.isError) {
+      clearInstallStallTimer();
+      setStatusPolling(false);
+      enterRebootFlow("software_update");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusQuery.isError, statusPolling]);
 
   // ---------------------------------------------------------------------------
   // Actions
   // ---------------------------------------------------------------------------
-  const checkForUpdates = useCallback(async () => {
-    setIsChecking(true);
-    await fetchUpdateInfo(true);
-    if (mountedRef.current) setIsChecking(false);
-  }, [fetchUpdateInfo]);
 
-  const downloadUpdate = useCallback(async (version?: string) => {
+  const checkForUpdates = async () => {
+    setIsChecking(true);
+    setActionError(null);
+    await infoQuery.refetch();
+    if (mountedRef.current) setIsChecking(false);
+  };
+
+  const downloadUpdate = async (version?: string) => {
     const targetVersion = version || updateInfo?.latest_version;
     if (!targetVersion) return;
 
-    setError(null);
+    setActionError(null);
     setIsDownloading(true);
     setDownloadState({ status: "downloading", version: targetVersion });
 
@@ -290,23 +267,25 @@ export function useSoftwareUpdate(): UseSoftwareUpdateReturn {
 
       const json = await resp.json();
       if (!json.success) {
-        setError(resolveErrorMessage(t, json.error, json.detail, "Failed to start download"));
+        setActionError(
+          resolveErrorMessage(t, json.error, json.detail, "Failed to start download"),
+        );
         setIsDownloading(false);
         setDownloadState(null);
         return;
       }
 
-      startDownloadPolling();
+      setStatusPolling(true);
     } catch (err) {
       if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to start download");
+      setActionError(err instanceof Error ? err.message : "Failed to start download");
       setIsDownloading(false);
       setDownloadState(null);
     }
-  }, [updateInfo, startDownloadPolling, t]);
+  };
 
-  const installStaged = useCallback(async () => {
-    setError(null);
+  const installStaged = async () => {
+    setActionError(null);
     setIsUpdating(true);
     setIsInstallStalled(false);
     lastStatusSignatureRef.current = "";
@@ -321,23 +300,25 @@ export function useSoftwareUpdate(): UseSoftwareUpdateReturn {
 
       const json = await resp.json();
       if (!json.success) {
-        setError(resolveErrorMessage(t, json.error, json.detail, "Failed to start installation"));
+        setActionError(
+          resolveErrorMessage(t, json.error, json.detail, "Failed to start installation"),
+        );
         setIsUpdating(false);
         return;
       }
 
-      startPolling();
+      setStatusPolling(true);
     } catch (err) {
       if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to start installation");
+      setActionError(err instanceof Error ? err.message : "Failed to start installation");
       setIsUpdating(false);
     }
-  }, [startPolling, t]);
+  };
 
-  const installUpdate = useCallback(async () => {
+  const installUpdate = async () => {
     if (!updateInfo?.download_url || !updateInfo?.latest_version) return;
 
-    setError(null);
+    setActionError(null);
     setIsUpdating(true);
     setIsInstallStalled(false);
     lastStatusSignatureRef.current = "";
@@ -357,21 +338,23 @@ export function useSoftwareUpdate(): UseSoftwareUpdateReturn {
 
       const json = await resp.json();
       if (!json.success) {
-        setError(resolveErrorMessage(t, json.error, json.detail, "Failed to start update"));
+        setActionError(
+          resolveErrorMessage(t, json.error, json.detail, "Failed to start update"),
+        );
         setIsUpdating(false);
         return;
       }
 
-      startPolling();
+      setStatusPolling(true);
     } catch (err) {
       if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to start update");
+      setActionError(err instanceof Error ? err.message : "Failed to start update");
       setIsUpdating(false);
     }
-  }, [updateInfo, startPolling, t]);
+  };
 
-  const rebootDevice = useCallback(async () => {
-    setError(null);
+  const rebootDevice = async () => {
+    setActionError(null);
     try {
       const resp = await authFetch("/cgi-bin/quecmanager/system/reboot.sh", {
         method: "POST",
@@ -384,12 +367,12 @@ export function useSoftwareUpdate(): UseSoftwareUpdateReturn {
       enterRebootFlow("software_update");
     } catch (err) {
       if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to request reboot");
+      setActionError(err instanceof Error ? err.message : "Failed to request reboot");
     }
-  }, []);
+  };
 
-  const togglePrerelease = useCallback(async (enabled: boolean) => {
-    try {
+  const togglePrereleaseMutation = useMutation({
+    mutationFn: async (enabled: boolean): Promise<void> => {
       const resp = await authFetch(CGI_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -398,20 +381,34 @@ export function useSoftwareUpdate(): UseSoftwareUpdateReturn {
 
       const json = await resp.json();
       if (!json.success) {
-        setError(resolveErrorMessage(t, json.error, json.detail, "Failed to save preference"));
-        return;
+        throw new Error(
+          resolveErrorMessage(t, json.error, json.detail, "Failed to save preference"),
+        );
       }
-
+    },
+    onSuccess: () => {
       // Re-check with new preference
-      await fetchUpdateInfo(true);
+      void infoQuery.refetch();
+    },
+  });
+
+  const togglePrerelease = async (enabled: boolean) => {
+    try {
+      await togglePrereleaseMutation.mutateAsync(enabled);
     } catch (err) {
       if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to save preference");
+      setActionError(err instanceof Error ? err.message : "Failed to save preference");
     }
-  }, [fetchUpdateInfo, t]);
+  };
 
-  const saveAutoUpdate = useCallback(async (enabled: boolean, time: string) => {
-    try {
+  const saveAutoUpdateMutation = useMutation({
+    mutationFn: async ({
+      enabled,
+      time,
+    }: {
+      enabled: boolean;
+      time: string;
+    }): Promise<void> => {
       const resp = await authFetch(CGI_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -420,22 +417,32 @@ export function useSoftwareUpdate(): UseSoftwareUpdateReturn {
 
       const json = await resp.json();
       if (!json.success) {
-        setError(resolveErrorMessage(t, json.error, json.detail, "Failed to save auto-update preference"));
-        return;
+        throw new Error(
+          resolveErrorMessage(t, json.error, json.detail, "Failed to save auto-update preference"),
+        );
       }
+    },
+    onSuccess: () => {
+      void infoQuery.refetch();
+    },
+  });
 
-      await fetchUpdateInfo(true);
+  const saveAutoUpdate = async (enabled: boolean, time: string) => {
+    try {
+      await saveAutoUpdateMutation.mutateAsync({ enabled, time });
     } catch (err) {
       if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to save auto-update preference");
+      setActionError(
+        err instanceof Error ? err.message : "Failed to save auto-update preference",
+      );
     }
-  }, [fetchUpdateInfo, t]);
+  };
 
   return {
     updateInfo,
     updateStatus,
     downloadState,
-    isLoading,
+    isLoading: infoQuery.isLoading || infoQuery.isPending,
     isChecking,
     isUpdating,
     isDownloading,

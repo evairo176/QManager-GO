@@ -6,6 +6,7 @@ import { MotionConfig } from "motion/react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { I18nProvider } from "@/components/i18n/i18n-provider";
+import { QQueryProvider } from "@/components/query-provider";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -47,7 +48,7 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             <I18nProvider>
-              {children}
+              <QQueryProvider>{children}</QQueryProvider>
               <Toaster />
             </I18nProvider>
           </ThemeProvider>

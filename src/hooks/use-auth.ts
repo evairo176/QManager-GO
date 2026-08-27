@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 
 const CHECK_ENDPOINT = "/cgi-bin/quecmanager/auth/check.sh";
 const LOGIN_ENDPOINT = "/cgi-bin/quecmanager/auth/login.sh";
@@ -27,27 +27,30 @@ function clearIndicatorCookie() {
 export type LoginStatus = "loading" | "ready" | "setup_required";
 
 export function useLogin() {
-  const [status, setStatus] = useState<LoginStatus>("loading");
+  const checkQuery = useQuery<{ setup_required?: boolean }>({
+    queryKey: ["auth-check"],
+    queryFn: async () => {
+      const r = await fetch(CHECK_ENDPOINT);
+      if (!r.ok) return { setup_required: false };
+      return r.json();
+    },
+    // Run once on mount; not re-fetched.
+    staleTime: Infinity,
+    retry: false,
+  });
 
-  useEffect(() => {
-    // If already logged in, redirect to dashboard
-    if (isLoggedIn()) {
-      window.location.href = "/dashboard/";
-      return;
-    }
+  // If already logged in, redirect to dashboard.
+  const status: LoginStatus = isLoggedIn()
+    ? "ready"
+    : checkQuery.isLoading || checkQuery.isPending
+      ? "loading"
+      : checkQuery.data?.setup_required
+        ? "setup_required"
+        : "ready";
 
-    // Check if first-time setup is needed
-    fetch(CHECK_ENDPOINT)
-      .then((r) => r.json())
-      .then((data) => {
-        setStatus(data.setup_required ? "setup_required" : "ready");
-      })
-      .catch(() => setStatus("ready"));
-  }, []);
-
-  const login = useCallback(
-    async (
-      password: string
+  const loginMutation = useMutation({
+    mutationFn: async (
+      password: string,
     ): Promise<{ success: boolean; error?: string; retry_after?: number }> => {
       try {
         const resp = await fetch(LOGIN_ENDPOINT, {
@@ -64,7 +67,6 @@ export function useLogin() {
         }
 
         if (data.error === "setup_required") {
-          setStatus("setup_required");
           return { success: false, error: "setup_required" };
         }
 
@@ -77,20 +79,23 @@ export function useLogin() {
         return { success: false, error: "Connection failed" };
       }
     },
-    []
-  );
+  });
 
-  const setup = useCallback(
-    async (
-      password: string,
-      confirm: string,
-      enforceStrong: boolean = true
-    ): Promise<{ success: boolean; error?: string }> => {
+  const setupMutation = useMutation({
+    mutationFn: async (args: {
+      password: string;
+      confirm: string;
+      enforceStrong?: boolean;
+    }): Promise<{ success: boolean; error?: string }> => {
       try {
         const resp = await fetch(LOGIN_ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password, confirm, enforce_strong: enforceStrong }),
+          body: JSON.stringify({
+            password: args.password,
+            confirm: args.confirm,
+            enforce_strong: args.enforceStrong ?? true,
+          }),
         });
         const data = await resp.json();
 
@@ -107,8 +112,14 @@ export function useLogin() {
         return { success: false, error: "Connection failed" };
       }
     },
-    []
-  );
+  });
+
+  const login = (password: string) => loginMutation.mutateAsync(password);
+  const setup = (
+    password: string,
+    confirm: string,
+    enforceStrong: boolean = true,
+  ) => setupMutation.mutateAsync({ password, confirm, enforceStrong });
 
   return { status, login, setup };
 }
@@ -117,11 +128,6 @@ export function useLogin() {
 // Standalone setup (used by onboarding wizard — does NOT redirect on success)
 // ---------------------------------------------------------------------------
 
-/**
- * Creates the initial password and session without redirecting.
- * Used by the onboarding wizard so it can advance steps instead of
- * immediately sending the user to the dashboard.
- */
 export async function setupPassword(
   password: string,
   confirm: string,
@@ -159,8 +165,6 @@ export async function logout(): Promise<void> {
     // Ignore network errors on logout
   } finally {
     clearIndicatorCookie();
-    // Land on the public Overview splash ("/"), not the bare login form. The
-    // indicator cookie is cleared above, so "/" renders OverviewCard directly.
     window.location.href = "/";
   }
 }

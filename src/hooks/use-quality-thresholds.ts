@@ -1,23 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type { QualityThresholdsSettings } from "@/types/modem-status";
 
 // =============================================================================
-// useQualityThresholds — read/write latency & packet-loss event thresholds
+// useQualityThresholds — read/write latency + loss tolerance presets
 // =============================================================================
-// GET  → { success: true, thresholds: { latency: { preset }, loss: { preset } },
-//          isDefault }
-// POST → { action: "save", latency_preset, loss_preset }
-//        The nested settings shape is flattened to flat wire keys here because
-//        the shell CGI parses flat fields.
-//        success: { success: true, ... }
-//        failure: { success: false, error, detail }
-//
-// Save rejects on failure so the calling card's try/catch can toast it; the
-// message is also stored in `saveError` for the inline alert.
-//
 // CGI: /cgi-bin/quecmanager/system/quality_thresholds.sh
 // =============================================================================
 
@@ -48,67 +37,29 @@ export interface UseQualityThresholdsReturn {
 }
 
 export function useQualityThresholds(): UseQualityThresholdsReturn {
-  const [thresholds, setThresholds] = useState<
-    QualityThresholdsSettings | undefined
-  >(undefined);
-  const [isDefault, setIsDefault] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  const mountedRef = useRef(true);
-
-  const fetchThresholds = useCallback(async () => {
-    try {
+  const query = useQuery<QualityThresholdsGetResponse>({
+    queryKey: ["quality-thresholds"],
+    queryFn: async () => {
       const response = await authFetch(ENDPOINT);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      const json: QualityThresholdsGetResponse = await response.json();
-      if (!mountedRef.current) return;
+      return response.json();
+    },
+  });
 
-      if (!json.success || !json.thresholds) {
-        setError(
-          json.detail || json.error || "Failed to load quality thresholds",
-        );
-        setIsLoading(false);
-        return;
-      }
-
-      setThresholds(json.thresholds);
-      setIsDefault(json.isDefault ?? false);
-      setError(null);
-      setIsLoading(false);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      const message =
-        err instanceof Error ? err.message : "Failed to load quality thresholds";
-      setError(message);
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    fetchThresholds();
-    return () => {
-      mountedRef.current = false;
-    };
-  }, [fetchThresholds]);
-
-  const save = useCallback(async (settings: QualityThresholdsSettings) => {
-    setIsSaving(true);
-    setSaveError(null);
-    try {
+  const saveMutation = useMutation({
+    mutationFn: async (settings: QualityThresholdsSettings) => {
       // Flatten the nested client shape to the flat wire keys the CGI parses.
-      // Custom raw values ride along only when their side's preset is `custom`.
       const body: Record<string, string | number> = {
         action: "save",
         latency_preset: settings.latency.preset,
         loss_preset: settings.loss.preset,
       };
-      if (settings.latency.preset === "custom" && settings.latency.custom_ms != null) {
+      if (
+        settings.latency.preset === "custom" &&
+        settings.latency.custom_ms != null
+      ) {
         body.latency_custom_ms = settings.latency.custom_ms;
       }
       if (settings.loss.preset === "custom" && settings.loss.custom_pct != null) {
@@ -129,28 +80,23 @@ export function useQualityThresholds(): UseQualityThresholdsReturn {
       if (!json.success) {
         throw new Error(json.detail || json.error || "Failed to save");
       }
+    },
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
 
-      if (mountedRef.current) {
-        // Saving an explicit preset clears the "using defaults" state.
-        setThresholds(settings);
-        setIsDefault(false);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to save";
-      if (mountedRef.current) setSaveError(message);
-      throw err instanceof Error ? err : new Error(message);
-    } finally {
-      if (mountedRef.current) setIsSaving(false);
-    }
-  }, []);
+  const save = async (settings: QualityThresholdsSettings) => {
+    await saveMutation.mutateAsync(settings);
+  };
 
   return {
-    thresholds,
-    isDefault,
-    isLoading,
-    error,
-    isSaving,
-    saveError,
+    thresholds: query.data?.thresholds,
+    isDefault: query.data?.isDefault ?? false,
+    isLoading: query.isLoading || query.isPending,
+    error: query.error ? query.error.message : null,
+    isSaving: saveMutation.isPending,
+    saveError: saveMutation.error ? saveMutation.error.message : null,
     save,
   };
 }

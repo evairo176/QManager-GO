@@ -1,30 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
 import type { AdaptivePollingSettings, PollerTier } from "@/types/modem-status";
 
 // =============================================================================
 // useAdaptivePolling — read/write the UI-aware poller backoff settings
 // =============================================================================
-// GET  → { success: true,
-//          settings: { enabled, active_grace, idle_interval, idle_threshold,
-//                      deep_idle_interval },
-//          isDefault, tier }
-//        `tier` is the LIVE current backoff tier the poller is running at,
-//        read by the backend from status.json.
-// POST → { action: "save", enabled, active_grace, idle_interval,
-//          idle_threshold, deep_idle_interval }
-//        success: { success: true }
-//        failure: { success: false, error, detail }
-//
-// Save rejects on failure so the calling card's try/catch can toast it; the
-// message is also stored in `saveError` for the inline alert.
-//
-// A light 10 s silent refresh keeps the live-tier badge fresh while the card is
-// open (mirrors the use-watchdog-settings setInterval pattern).
-//
 // CGI: /cgi-bin/quecmanager/system/adaptive_polling.sh
+// A light 10 s refetch keeps the live-tier badge fresh while the card is open.
 // =============================================================================
 
 const ENDPOINT = "/cgi-bin/quecmanager/system/adaptive_polling.sh";
@@ -58,90 +42,24 @@ export interface UseAdaptivePollingReturn {
 }
 
 export function useAdaptivePolling(): UseAdaptivePollingReturn {
-  const [settings, setSettings] = useState<AdaptivePollingSettings | undefined>(
-    undefined,
-  );
-  const [isDefault, setIsDefault] = useState(false);
-  const [tier, setTier] = useState<PollerTier | undefined>(undefined);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  const mountedRef = useRef(true);
-
-  // `silent` skips the loading spinner — used by the periodic tier refresh so
-  // it never flashes a skeleton over a populated card.
-  const fetchSettings = useCallback(async (silent = false) => {
-    if (!silent && mountedRef.current) setIsLoading(true);
-    try {
+  const query = useQuery<AdaptivePollingGetResponse>({
+    queryKey: ["adaptive-polling"],
+    queryFn: async () => {
       const response = await authFetch(ENDPOINT);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       const json: AdaptivePollingGetResponse = await response.json();
-      if (!mountedRef.current) return;
-
       if (!json.success || !json.settings) {
-        if (!silent) {
-          setError(
-            json.detail || json.error || "Failed to load adaptive polling",
-          );
-        }
-        setIsLoading(false);
-        return;
+        throw new Error(json.detail || json.error || "Failed to load adaptive polling");
       }
+      return json;
+    },
+    refetchInterval: TIER_REFRESH_MS,
+  });
 
-      setSettings(json.settings);
-      setIsDefault(json.isDefault ?? false);
-      setTier(json.tier);
-      setError(null);
-      setIsLoading(false);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      if (!silent) {
-        const message =
-          err instanceof Error ? err.message : "Failed to load adaptive polling";
-        setError(message);
-      }
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    mountedRef.current = true;
-
-    // Initial load always fires, regardless of visibility, so the card
-    // populates even if it's mounted while the tab is briefly hidden.
-    fetchSettings();
-
-    const tick = () => {
-      if (document.hidden) return;
-      fetchSettings(true);
-    };
-
-    const onVisibilityChange = () => {
-      if (!document.hidden) {
-        // Immediate refresh the moment the user returns so the tier badge
-        // is current without waiting for the next interval tick.
-        fetchSettings(true);
-      }
-    };
-
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    const id = setInterval(tick, TIER_REFRESH_MS);
-
-    return () => {
-      mountedRef.current = false;
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [fetchSettings]);
-
-  const save = useCallback(async (next: AdaptivePollingSettings) => {
-    setIsSaving(true);
-    setSaveError(null);
-    try {
+  const saveMutation = useMutation({
+    mutationFn: async (next: AdaptivePollingSettings) => {
       const response = await authFetch(ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -163,30 +81,27 @@ export function useAdaptivePolling(): UseAdaptivePollingReturn {
       if (!json.success) {
         throw new Error(json.detail || json.error || "Failed to save");
       }
+    },
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
 
-      if (mountedRef.current) {
-        // Optimistic: an explicit save clears the "using defaults" state.
-        setSettings(next);
-        setIsDefault(false);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to save";
-      if (mountedRef.current) setSaveError(message);
-      throw err instanceof Error ? err : new Error(message);
-    } finally {
-      if (mountedRef.current) setIsSaving(false);
-    }
-  }, []);
+  const save = async (next: AdaptivePollingSettings) => {
+    await saveMutation.mutateAsync(next);
+  };
 
   return {
-    settings,
-    isDefault,
-    tier,
-    isLoading,
-    error,
-    isSaving,
-    saveError,
+    settings: query.data?.settings,
+    isDefault: query.data?.isDefault ?? false,
+    tier: query.data?.tier,
+    isLoading: query.isLoading || query.isPending,
+    error: query.error ? query.error.message : null,
+    isSaving: saveMutation.isPending,
+    saveError: saveMutation.error ? saveMutation.error.message : null,
     save,
-    refresh: fetchSettings,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -12,12 +13,7 @@ const CGI_ENDPOINT = "/cgi-bin/quecmanager/monitoring/watchdog.sh";
 
 export interface WatchdogSettings {
   enabled: boolean;
-  // Reachability: number of consecutive FAILED PROBES (raw streak_fail from the
-  // ping daemon) before recovery. Renamed from the old `max_failures`, whose
-  // unit was watchdog loop cycles — the daemon now reads the raw probe streak.
   fail_threshold: number;
-  // Watchdog loop / quality-sampling cadence. No longer the reachability knob;
-  // kept here as pass-through (not user-edited in the new UI).
   check_interval: number;
   cooldown: number;
   tier1_enabled: boolean;
@@ -26,28 +22,12 @@ export interface WatchdogSettings {
   tier4_enabled: boolean;
   backup_sim_slot: number | null;
   max_reboots_per_hour: number;
-  // Connection-quality RECOVERY (opt-in, default off). The thresholds it acts on
-  // are the SHARED quality_thresholds owned by the Connection Quality page; the
-  // watchdog owns only whether to recover (`quality_enabled`) and how sustained a
-  // breach must be (`quality_consecutive`).
   quality_enabled: boolean;
   quality_consecutive: number;
-  // SSR-aware hold: let a recoverable baseband restart self-heal before the
-  // recovery ladder may act. Default on (the daemon defaults to 1/45 too).
   ssr_aware: boolean;
   ssr_grace: number;
-  // Auto fail-back to the primary SIM after a Tier-3 failover. Because the
-  // inactive SIM slot cannot be health-checked passively, this is a BLIND
-  // periodic swap-back-and-retest — each attempt is a real outage — so it is
-  // opt-in (default off). The interval is in MINUTES (5–1440). UCI:
-  // quecmanager.watchcat.{primary_recheck_enabled,primary_recheck_interval}.
   primary_recheck_enabled: boolean;
   primary_recheck_interval: number;
-  // Probe interval ownership. The Watchdog page mirrors the Connection Quality
-  // sensitivity Select and can override the interval with a custom value. These
-  // map to UCI `quecmanager.ping_profile.{profile,interval_override}`; the GET
-  // returns them top-level, the hook folds them in here, and they ride the same
-  // atomic save back out (CGI routes them to the ping_profile section).
   probe_profile: PingProfile;
   interval_override: number | null;
 }
@@ -56,11 +36,6 @@ export type WatchdogSavePayload = WatchdogSettings & {
   action: "save_settings";
 };
 
-/**
- * Read-only resolved view of the SHARED quality thresholds, surfaced on the
- * Watchdog quality tab so the user can see what recovery acts on. Editing lives
- * on the Connection Quality page (single writer).
- */
 export interface WatchdogQualityThresholds {
   latency_ms: number;
   loss_pct: number;
@@ -85,8 +60,6 @@ export interface WatchdogLiveStatus {
   quality_breach_count?: number;
   quality_enabled?: boolean;
   last_recovery_reason?: string;
-  // Optional (older daemons won't emit them): currently holding for a
-  // self-healing baseband SSR, and the monotonic seconds when one was last seen.
   ssr_hold?: boolean;
   last_ssr_detected?: number | null;
 }
@@ -102,14 +75,26 @@ export interface SimSwapInfo {
   detected: boolean;
   matching_profile_id?: string;
   matching_profile_name?: string;
-  dismissed?: boolean;
+}
+
+interface WatchdogGetResponse {
+  success: boolean;
+  settings?: WatchdogSettings;
+  probe_profile?: PingProfile;
+  interval_override?: number | null;
+  effective_interval?: number;
+  quality_thresholds?: WatchdogQualityThresholds | null;
+  status?: WatchdogLiveStatus | null;
+  sim_failover?: SimFailoverInfo | null;
+  sim_swap?: SimSwapInfo | null;
+  auto_disabled?: boolean;
+  error?: string;
+  reason?: string;
 }
 
 export interface UseWatchdogSettingsReturn {
   settings: WatchdogSettings | null;
-  /** Effective probe interval in seconds (override if set, else profile). */
   effectiveInterval: number | null;
-  /** Read-only resolved view of the shared quality thresholds. */
   qualityThresholds: WatchdogQualityThresholds | null;
   status: WatchdogLiveStatus | null;
   simFailover: SimFailoverInfo | null;
@@ -128,195 +113,144 @@ export interface UseWatchdogSettingsReturn {
 
 export function useWatchdogSettings(): UseWatchdogSettingsReturn {
   const { t } = useTranslation("errors");
-  const [settings, setSettings] = useState<WatchdogSettings | null>(null);
-  const [effectiveInterval, setEffectiveInterval] = useState<number | null>(
-    null,
-  );
-  const [qualityThresholds, setQualityThresholds] =
-    useState<WatchdogQualityThresholds | null>(null);
-  const [status, setStatus] = useState<WatchdogLiveStatus | null>(null);
-  const [simFailover, setSimFailover] = useState<SimFailoverInfo | null>(null);
-  const [simSwap, setSimSwap] = useState<SimSwapInfo | null>(null);
-  const [autoDisabled, setAutoDisabled] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Fetch current settings + live status
-  // ---------------------------------------------------------------------------
-  const fetchSettings = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery<WatchdogGetResponse>({
+    queryKey: ["watchdog-settings"],
+    queryFn: async () => {
       const resp = await authFetch(CGI_ENDPOINT);
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      }
+      return resp.json();
+    },
+    refetchInterval: 30_000,
+  });
+
+  const json = query.data;
+  const settings: WatchdogSettings | null = json?.settings
+    ? {
+        ...json.settings,
+        probe_profile: json.probe_profile ?? "relaxed",
+        interval_override: json.interval_override ?? null,
+      }
+    : null;
+
+  const error = query.error
+    ? query.error.message
+    : json && !json.success
+      ? resolveErrorMessage(t, json.error, json.reason, "Failed to fetch watchdog settings")
+      : null;
+
+  // ─── Save settings ────────────────────────────────────────────────────────
+
+  const saveMutation = useMutation({
+    mutationFn: async (payload: WatchdogSavePayload): Promise<boolean> => {
+      const resp = await authFetch(CGI_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
 
       const json = await resp.json();
-      if (!mountedRef.current) return;
-
       if (!json.success) {
-        setError(resolveErrorMessage(t, json.error, undefined, "Failed to fetch watchdog settings"));
-        return;
-      }
-
-      // Fold the top-level probe-interval fields into settings so the form and
-      // the atomic save treat them as part of one settings object.
-      setSettings({
-        ...json.settings,
-        probe_profile: json.probe_profile,
-        interval_override: json.interval_override ?? null,
-      });
-      setEffectiveInterval(
-        typeof json.effective_interval === "number"
-          ? json.effective_interval
-          : null,
-      );
-      setQualityThresholds(json.quality_thresholds ?? null);
-      setStatus(json.status && json.status.timestamp ? json.status : null);
-      setSimFailover(json.sim_failover || null);
-      setSimSwap(json.sim_swap || null);
-      setAutoDisabled(json.auto_disabled === true);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to fetch watchdog settings"
-      );
-    } finally {
-      if (mountedRef.current && !silent) {
-        setIsLoading(false);
-      }
-    }
-  }, [t]);
-
-  useEffect(() => {
-    fetchSettings();
-    const id = setInterval(() => {
-      fetchSettings(true);
-    }, 30_000);
-    return () => clearInterval(id);
-  }, [fetchSettings]);
-
-  // ---------------------------------------------------------------------------
-  // Save settings
-  // ---------------------------------------------------------------------------
-  const saveSettings = useCallback(
-    async (payload: WatchdogSavePayload): Promise<boolean> => {
-      setError(null);
-      setIsSaving(true);
-
-      try {
-        const resp = await authFetch(CGI_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
-
-        const json = await resp.json();
-        if (!mountedRef.current) return false;
-
-        if (!json.success) {
-          // watchdog CGI uses `reason` rather than `detail`
-          setError(resolveErrorMessage(t, json.error, json.reason, "Failed to save watchdog settings"));
-          return false;
-        }
-
-        // Silent re-fetch to sync state
-        await fetchSettings(true);
-        return true;
-      } catch (err) {
-        if (!mountedRef.current) return false;
-        setError(
-          err instanceof Error ? err.message : "Failed to save settings"
+        throw new Error(
+          resolveErrorMessage(t, json.error, json.reason, "Failed to save watchdog settings"),
         );
-        return false;
-      } finally {
-        if (mountedRef.current) {
-          setIsSaving(false);
-        }
       }
+      return true;
     },
-    [fetchSettings, t]
-  );
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
 
-  // ---------------------------------------------------------------------------
-  // Dismiss SIM swap notification
-  // ---------------------------------------------------------------------------
-  const dismissSimSwap = useCallback(async (): Promise<boolean> => {
+  const saveSettings = async (payload: WatchdogSavePayload): Promise<boolean> => {
+    setIsSaving(true);
     try {
+      return await saveMutation.mutateAsync(payload);
+    } catch (err) {
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // ─── Dismiss SIM swap notification ────────────────────────────────────────
+
+  const dismissMutation = useMutation({
+    mutationFn: async (): Promise<boolean> => {
       const resp = await authFetch(CGI_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "dismiss_sim_swap" }),
       });
-
       if (!resp.ok) return false;
-
       const json = await resp.json();
-      if (!mountedRef.current) return false;
+      return json.success === true;
+    },
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
 
-      if (json.success) {
-        setSimSwap((prev) =>
-          prev ? { ...prev, detected: false, dismissed: true } : prev
-        );
-      }
-      return json.success;
+  const dismissSimSwap = async (): Promise<boolean> => {
+    try {
+      return await dismissMutation.mutateAsync();
     } catch {
       return false;
     }
-  }, []);
+  };
 
-  // ---------------------------------------------------------------------------
-  // Request SIM revert (watchcat picks up the flag)
-  // ---------------------------------------------------------------------------
-  const revertSim = useCallback(async (): Promise<boolean> => {
-    try {
+  // ─── Request SIM revert (watchcat picks up the flag) ──────────────────────
+
+  const revertMutation = useMutation({
+    mutationFn: async (): Promise<boolean> => {
       const resp = await authFetch(CGI_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "revert_sim" }),
       });
-
       if (!resp.ok) return false;
-
       const json = await resp.json();
-      return json.success;
+      return json.success === true;
+    },
+    onSuccess: () => {
+      void query.refetch();
+    },
+  });
+
+  const revertSim = async (): Promise<boolean> => {
+    try {
+      return await revertMutation.mutateAsync();
     } catch {
       return false;
     }
-  }, []);
+  };
 
   return {
     settings,
-    effectiveInterval,
-    qualityThresholds,
-    status,
-    simFailover,
-    simSwap,
-    autoDisabled,
-    isLoading,
+    effectiveInterval:
+      typeof json?.effective_interval === "number"
+        ? json.effective_interval
+        : null,
+    qualityThresholds: json?.quality_thresholds ?? null,
+    status: json?.status && json.status.timestamp ? json.status : null,
+    simFailover: json?.sim_failover ?? null,
+    simSwap: json?.sim_swap ?? null,
+    autoDisabled: json?.auto_disabled === true,
+    isLoading: query.isLoading || query.isPending,
     isSaving,
     error,
     saveSettings,
     dismissSimSwap,
     revertSim,
-    refresh: fetchSettings,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }

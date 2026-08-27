@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -26,38 +26,23 @@ export interface UseAboutDeviceReturn {
 
 export function useAboutDevice(): UseAboutDeviceReturn {
   const { t } = useTranslation("system-settings");
-  const [data, setData] = useState<AboutDeviceData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const mountedRef = useRef(true);
+  // Compute fallback inside queryFn so language changes are picked up on each
+  // refetch without re-creating the query.
+  const query = useQuery<AboutDeviceData>({
+    queryKey: ["about-device"],
+    queryFn: async () => {
+      const fallback = t("about_device.errors.fetch_failed");
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const fetchData = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    setError(null);
-
-    // Compute fallback inside each call so language changes are picked up
-    // without re-creating fetchData (which would re-run the mount effect).
-    const fallback = t("about_device.errors.fetch_failed");
-
-    try {
       const resp = await authFetch(CGI_ENDPOINT);
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
 
       const json: AboutDeviceResponse = await resp.json();
-      if (!mountedRef.current) return;
 
       if (!json.success) {
-        setError(
+        throw new Error(
           resolveErrorMessage(
             t,
             json.error,
@@ -65,34 +50,31 @@ export function useAboutDevice(): UseAboutDeviceReturn {
             fallback,
           ),
         );
-        return;
       }
 
-      setData({
+      return {
         device: json.device,
         threeGppRelease: json["3gpp_release"],
         network: json.network,
         system: json.system,
-      });
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : fallback);
-    } finally {
-      if (mountedRef.current && !silent) {
-        setIsLoading(false);
-      }
-    }
-    // t intentionally omitted from deps — see fallback comment above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      };
+    },
+  });
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const data = query.data ?? null;
 
-  const refresh = useCallback(() => {
-    fetchData();
-  }, [fetchData]);
+  const error = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to load device info"
+    : null;
 
-  return { data, isLoading, error, refresh };
+  return {
+    data,
+    isLoading: query.isLoading || query.isPending,
+    error,
+    refresh: () => {
+      void query.refetch();
+    },
+  };
 }

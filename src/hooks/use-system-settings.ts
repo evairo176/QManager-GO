@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
@@ -66,142 +67,96 @@ export interface UseSystemSettingsReturn {
 
 export function useSystemSettings(): UseSystemSettingsReturn {
   const { t } = useTranslation("errors");
-  const [settings, setSettings] = useState<SystemSettings | null>(null);
-  const [scheduledReboot, setScheduledReboot] =
-    useState<ScheduleConfig | null>(null);
-  const [lowPower, setLowPower] = useState<LowPowerConfig | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Fetch current settings
-  // ---------------------------------------------------------------------------
-  const fetchSettings = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery<SystemSettingsResponse>({
+    queryKey: ["system-settings"],
+    queryFn: async () => {
       const resp = await authFetch(CGI_ENDPOINT);
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
+      return resp.json();
+    },
+  });
 
-      const json: SystemSettingsResponse = await resp.json();
-      if (!mountedRef.current) return;
+  const json = query.data;
 
-      if (!json.success) {
-        setError("Failed to fetch system settings");
-        return;
-      }
+  const error = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to fetch system settings"
+    : json && !json.success
+      ? "Failed to fetch system settings"
+      : null;
 
-      setSettings(json.settings);
-      setScheduledReboot(json.scheduled_reboot);
-      setLowPower(json.low_power);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch system settings",
-      );
-    } finally {
-      if (mountedRef.current && !silent) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
+  // ─── Save (generic POST helper) ──────────────────────────────────────────
 
-  useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
-
-  // ---------------------------------------------------------------------------
-  // Generic POST helper
-  // ---------------------------------------------------------------------------
-  const postAction = useCallback(
-    async (
+  const saveMutation = useMutation({
+    mutationFn: async (
       payload:
         | SaveSettingsPayload
         | SaveScheduledRebootPayload
         | SaveLowPowerPayload,
     ): Promise<boolean> => {
-      setError(null);
-      setIsSaving(true);
+      const resp = await authFetch(CGI_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-      try {
-        const resp = await authFetch(CGI_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        }
-
-        const json = await resp.json();
-        if (!mountedRef.current) return false;
-
-        if (!json.success) {
-          setError(resolveErrorMessage(t, json.error, json.detail, "Failed to save settings"));
-          return false;
-        }
-
-        // Silent re-fetch to sync all state
-        await fetchSettings(true);
-        return true;
-      } catch (err) {
-        if (!mountedRef.current) return false;
-        setError(
-          err instanceof Error ? err.message : "Failed to save settings",
-        );
-        return false;
-      } finally {
-        if (mountedRef.current) {
-          setIsSaving(false);
-        }
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       }
+
+      const body = await resp.json();
+      if (!body.success) {
+        throw new Error(
+          resolveErrorMessage(t, body.error, body.detail, "Failed to save settings"),
+        );
+      }
+      return true;
     },
-    [fetchSettings, t],
-  );
+    onSuccess: () => {
+      // Silent re-fetch to sync all state
+      void query.refetch();
+    },
+  });
 
-  // ---------------------------------------------------------------------------
-  // Per-action save wrappers
-  // ---------------------------------------------------------------------------
-  const saveSettings = useCallback(
-    (payload: SaveSettingsPayload) => postAction(payload),
-    [postAction],
-  );
+  const postAction = async (
+    payload:
+      | SaveSettingsPayload
+      | SaveScheduledRebootPayload
+      | SaveLowPowerPayload,
+  ): Promise<boolean> => {
+    setIsSaving(true);
+    try {
+      return await saveMutation.mutateAsync(payload);
+    } catch {
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-  const saveScheduledReboot = useCallback(
-    (payload: SaveScheduledRebootPayload) => postAction(payload),
-    [postAction],
-  );
-
-  const saveLowPower = useCallback(
-    (payload: SaveLowPowerPayload) => postAction(payload),
-    [postAction],
-  );
+  const saveSettings = (payload: SaveSettingsPayload) => postAction(payload);
+  const saveScheduledReboot = (payload: SaveScheduledRebootPayload) =>
+    postAction(payload);
+  const saveLowPower = (payload: SaveLowPowerPayload) => postAction(payload);
 
   return {
-    settings,
-    scheduledReboot,
-    lowPower,
-    isLoading,
+    settings: json?.success ? json.settings : null,
+    scheduledReboot: json?.success ? json.scheduled_reboot : null,
+    lowPower: json?.success ? json.low_power : null,
+    isLoading: query.isLoading || query.isPending,
     isSaving,
     error,
     saveSettings,
     saveScheduledReboot,
     saveLowPower,
-    refresh: fetchSettings,
+    refresh: () => {
+      void query.refetch();
+    },
   };
 }
 
@@ -218,38 +173,31 @@ interface UnitPreferences {
 }
 
 export function useUnitPreferences(): UnitPreferences | null {
-  const [prefs, setPrefs] = useState<UnitPreferences | null>(null);
+  const query = useQuery<SystemSettingsResponse | null>({
+    queryKey: ["system-settings", "unit-preferences"],
+    queryFn: async () => {
+      // Plain fetch, NOT authFetch: this is a best-effort display-preference read
+      // that also runs on the public Overview splash ("/"), where the visitor is
+      // logged out and this endpoint returns 401. authFetch turns any 401 into a
+      // global `window.location = "/login/"` redirect — which would bounce the
+      // public splash straight to the login form the instant it mounts. A display
+      // preference must never drive session-loss routing. Cookies still ride along
+      // (same-origin default credentials), so the logged-in dashboard keeps
+      // getting the user's real °F/miles prefs; logged-out simply falls through to
+      // the celsius/km defaults below.
+      const resp = await fetch(CGI_ENDPOINT, { cache: "no-store" });
+      if (!resp.ok) return null;
+      return resp.json();
+    },
+    staleTime: Infinity,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-
-    // Plain fetch, NOT authFetch: this is a best-effort display-preference read
-    // that also runs on the public Overview splash ("/"), where the visitor is
-    // logged out and this endpoint returns 401. authFetch turns any 401 into a
-    // global `window.location = "/login/"` redirect — which would bounce the
-    // public splash straight to the login form the instant it mounts. A display
-    // preference must never drive session-loss routing. Cookies still ride along
-    // (same-origin default credentials), so the logged-in dashboard keeps
-    // getting the user's real °F/miles prefs; logged-out simply falls through to
-    // the celsius/km defaults below.
-    fetch(CGI_ENDPOINT, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((json: SystemSettingsResponse | null) => {
-        if (!cancelled && json?.success && json.settings) {
-          setPrefs({
-            tempUnit: json.settings.temp_unit || "celsius",
-            distanceUnit: json.settings.distance_unit || "km",
-          });
-        }
-      })
-      .catch(() => {
-        // Silent: fall back to the celsius/km defaults on any error.
-      });
-
-    return () => {
-      cancelled = true;
+  const json = query.data;
+  if (json?.success && json.settings) {
+    return {
+      tempUnit: json.settings.temp_unit || "celsius",
+      distanceUnit: json.settings.distance_unit || "km",
     };
-  }, []);
-
-  return prefs;
+  }
+  return null;
 }
