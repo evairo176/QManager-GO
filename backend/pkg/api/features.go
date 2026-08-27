@@ -171,45 +171,249 @@ func (s *Server) HandleIPPassthrough(w http.ResponseWriter, r *http.Request) {
 // HandlePingProfile handles Ping / Latency monitor profile config
 func (s *Server) HandlePingProfile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	cfg := qmReadJSONFile("/etc/qmanager/ping_profile.json")
+	profile := qmStr(cfg["profile"])
+	if profile == "" {
+		profile = "relaxed"
+	}
+	interval := qmCfgInt(cfg, "interval_sec", 5)
+	failSecs := qmCfgInt(cfg, "fail_secs", 15)
+	recoverSecs := qmCfgInt(cfg, "recover_secs", 10)
+	interceptSecs := qmCfgInt(cfg, "intercept_secs", 8)
+	historySecs := qmCfgInt(cfg, "history_secs", 300)
+	target4 := qmStr(cfg["target_ipv4"])
+	if target4 == "" {
+		target4 = "1.1.1.1"
+	}
+	target6 := qmStr(cfg["target_ipv6"])
+	if target6 == "" {
+		target6 = "2606:4700:4700::1111"
+	}
+
+	// interval_override from watchdog (custom probe interval)
+	override := 0
+	if wd := qmReadJSONFile("/etc/qmanager/watchcat.json"); wd != nil {
+		override = qmCfgInt(wd, "interval_override", 0)
+	}
+	effInterval := interval
+	if override > 0 {
+		effInterval = override
+	}
+
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "invalid_json"})
+			return
+		}
+		if v, ok := body["profile"].(string); ok && v != "" {
+			profile = v
+		}
+		if v, ok := body["target_ipv4"].(string); ok && v != "" {
+			target4 = v
+		}
+		if v, ok := body["target_ipv6"].(string); ok && v != "" {
+			target6 = v
+		}
+		if n, ok := asInt(body["interval_sec"]); ok {
+			interval = n
+		}
+		writeJSONFile("/etc/qmanager/ping_profile.json", map[string]any{
+			"profile":        profile,
+			"interval_sec":   interval,
+			"fail_secs":      failSecs,
+			"recover_secs":   recoverSecs,
+			"intercept_secs": interceptSecs,
+			"history_secs":   historySecs,
+			"target_ipv4":    target4,
+			"target_ipv6":    target6,
+		})
+		_ = os.WriteFile("/tmp/qmanager_ping_reload", []byte("1"), 0644)
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"profile": map[string]interface{}{
-			"target":   "1.1.1.1",
-			"interval": 30,
-		},
+		"success":            true,
+		"profile":            profile,
+		"interval_sec":       interval,
+		"target_ipv4":        target4,
+		"target_ipv6":        target6,
+		"interval_override":  override,
+		"effective_interval": effInterval,
 	})
 }
 
 // HandleQualityThresholds handles connection quality threshold config
 func (s *Server) HandleQualityThresholds(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	cfg := qmReadJSONFile("/etc/qmanager/quality_thresholds.json")
+	latencyPreset := "standard"
+	lossPreset := "standard"
+	if lp, ok := cfg["latency"].(map[string]any); ok {
+		latencyPreset = qmStr(lp["preset"])
+		if latencyPreset == "" {
+			latencyPreset = "standard"
+		}
+	}
+	if lp, ok := cfg["loss"].(map[string]any); ok {
+		lossPreset = qmStr(lp["preset"])
+		if lossPreset == "" {
+			lossPreset = "standard"
+		}
+	}
+	// custom values
+	var customLatency, customLoss any
+	if lp, ok := cfg["latency"].(map[string]any); ok {
+		customLatency = lp["custom_ms"]
+	}
+	if lp, ok := cfg["loss"].(map[string]any); ok {
+		customLoss = lp["custom_pct"]
+	}
+
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "invalid_json"})
+			return
+		}
+		if t, ok := body["thresholds"].(map[string]any); ok {
+			lat := map[string]any{"preset": "standard"}
+			los := map[string]any{"preset": "standard"}
+			if v, ok2 := t["latency"].(map[string]any); ok2 {
+				lat = v
+			}
+			if v, ok2 := t["loss"].(map[string]any); ok2 {
+				los = v
+			}
+			writeJSONFile("/etc/qmanager/quality_thresholds.json", map[string]any{
+				"latency": lat,
+				"loss":    los,
+			})
+			latencyPreset = qmStr(lat["preset"])
+			lossPreset = qmStr(los["preset"])
+		}
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"thresholds": map[string]interface{}{
-			"rsrp_excellent": -85,
-			"rsrp_good":      -95,
-			"rsrp_fair":      -105,
+			"latency": map[string]interface{}{"preset": latencyPreset, "custom_ms": customLatency},
+			"loss":    map[string]interface{}{"preset": lossPreset, "custom_pct": customLoss},
 		},
+		"isDefault": latencyPreset == "standard" && lossPreset == "standard",
 	})
 }
 
 // HandleAdaptivePolling handles adaptive polling tier config
 func (s *Server) HandleAdaptivePolling(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	mode := "auto"
+	cfg := qmReadJSONFile("/etc/qmanager/adaptive_polling.json")
+	if m, ok := cfg["mode"].(string); ok && m != "" {
+		mode = m
+	}
+
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+			if m, ok := body["mode"].(string); ok {
+				mode = m
+				writeJSONFile("/etc/qmanager/adaptive_polling.json", map[string]any{"mode": mode})
+			}
+		}
+	}
+
+	// active tier from status file written by poller
+	activeTier := "active"
+	if st := qmReadJSONFile("/tmp/qmanager_status.json"); st != nil {
+		if t, ok := st["poll_tier"].(string); ok && t != "" {
+			activeTier = t
+		}
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":     true,
-		"mode":        "auto",
-		"active_tier": "active",
+		"mode":        mode,
+		"active_tier": activeTier,
 	})
 }
 
 // HandleMTU handles MTU configuration
 func (s *Server) HandleMTU(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	cfg := qmReadJSONFile("/etc/qmanager/mtu.json")
+	mtu := qmCfgInt(cfg, "mtu", 1500)
+	auto := true
+	if v, ok := cfg["auto"].(bool); ok {
+		auto = v
+	}
+
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+			if v, ok := body["auto"].(bool); ok {
+				auto = v
+			}
+			if n, ok := asInt(body["mtu"]); ok {
+				mtu = n
+			}
+			writeJSONFile("/etc/qmanager/mtu.json", map[string]any{"mtu": mtu, "auto": auto})
+		}
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"mtu":     1500,
-		"auto":    true,
+		"mtu":     mtu,
+		"auto":    auto,
+	})
+}
+
+// HandleCustomDNS handles custom DNS server configuration
+func (s *Server) HandleCustomDNS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	cfg := qmReadJSONFile("/etc/qmanager/custom_dns.json")
+	enabled := qmBool(cfg["enabled"])
+	servers := []string{}
+	if v, ok := cfg["servers"].([]any); ok {
+		for _, s := range v {
+			if str, ok := s.(string); ok {
+				servers = append(servers, str)
+			}
+		}
+	}
+
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+			if v, ok := body["enabled"].(bool); ok {
+				enabled = v
+			}
+			if v, ok := body["servers"].([]any); ok {
+				servers = []string{}
+				for _, s := range v {
+					if str, ok := s.(string); ok {
+						servers = append(servers, str)
+					}
+				}
+			}
+			writeJSONFile("/etc/qmanager/custom_dns.json", map[string]any{
+				"enabled": enabled,
+				"servers": servers,
+			})
+		}
+	}
+
+	if servers == nil {
+		servers = []string{}
+	}
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"enabled": enabled,
+		"servers": servers,
 	})
 }
 

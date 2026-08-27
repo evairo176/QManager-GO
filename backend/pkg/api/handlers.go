@@ -457,18 +457,64 @@ func (s *Server) HandleLANDevices(w http.ResponseWriter, r *http.Request) {
 // HandleDNS manages custom DNS configuration
 func (s *Server) HandleDNS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if r.Method == http.MethodPost {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "DNS settings saved"})
-		return
+
+	cfg := qmReadJSONFile("/etc/qmanager/custom_dns.json")
+	mode := qmStr(cfg["mode"])
+	if mode == "" {
+		mode = "preset"
 	}
+	preset := qmStr(cfg["preset"])
+	if preset == "" {
+		preset = "cloudflare"
+	}
+	dns1 := qmStr(cfg["dns1"])
+	if dns1 == "" {
+		dns1 = "1.1.1.1"
+	}
+	dns2 := qmStr(cfg["dns2"])
+	if dns2 == "" {
+		dns2 = "1.0.0.1"
+	}
+	enabled := qmBool(cfg["enabled"])
+
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+			if v, ok := body["dns"].(map[string]any); ok {
+				if m, ok2 := v["mode"].(string); ok2 {
+					mode = m
+				}
+				if p, ok2 := v["preset"].(string); ok2 {
+					preset = p
+				}
+				if d, ok2 := v["dns1"].(string); ok2 {
+					dns1 = d
+				}
+				if d, ok2 := v["dns2"].(string); ok2 {
+					dns2 = d
+				}
+				if e, ok2 := v["enabled"].(bool); ok2 {
+					enabled = e
+				}
+			}
+			writeJSONFile("/etc/qmanager/custom_dns.json", map[string]any{
+				"mode":    mode,
+				"preset":  preset,
+				"dns1":    dns1,
+				"dns2":    dns2,
+				"enabled": enabled,
+			})
+		}
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"dns": map[string]interface{}{
-			"mode":    "preset",
-			"preset":  "cloudflare",
-			"dns1":    "1.1.1.1",
-			"dns2":    "1.0.0.1",
-			"enabled": true,
+			"mode":    mode,
+			"preset":  preset,
+			"dns1":    dns1,
+			"dns2":    dns2,
+			"enabled": enabled,
 		},
 	})
 }
