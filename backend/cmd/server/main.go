@@ -39,9 +39,9 @@ func main() {
 	atClient := at.NewClient("/dev/smd11")
 
 	// Start Background Poller Daemon (runs continuously without spawning subshells)
-	poller := daemon.NewPoller(atClient, 5*time.Second)
+	poller := daemon.NewPoller(atClient, 10*time.Second)
 	poller.Start()
-	log.Println("[Daemon] Background Status Poller started (5s interval)")
+	log.Println("[Daemon] Background Status Poller started (10s interval)")
 
 	// Start Background Watchdog Daemon (monitors connectivity natively)
 	watchdog := daemon.NewWatchdog("1.1.1.1", 30*time.Second, 3)

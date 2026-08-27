@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -90,7 +89,11 @@ func (c *Client) execOnModem(cmd string) (string, error) {
 	// (qmanager_poller, qmanager_watchcat) also go through qcmd, so using it
 	// here guarantees we never collide with them on the serial port.
 	if _, err := exec.LookPath("qcmd"); err == nil {
-		subCmd := exec.Command("sh", "-c", fmt.Sprintf("echo %s | qcmd", strconv.Quote(cmd)))
+		// qcmd accepts the AT command directly as an argument (one process).
+		// The legacy `echo ... | qcmd` pipe spawned sh + qcmd (two processes),
+		// doubling subprocess churn — significant on a 1-core modem where the
+		// Go poller fires ~21 AT calls per cycle.
+		subCmd := exec.Command("qcmd", cmd)
 		out, err := subCmd.Output()
 		if err == nil {
 			res := strings.TrimSpace(string(out))
@@ -121,7 +124,7 @@ func (c *Client) execOnModem(cmd string) (string, error) {
 
 	// 2. Try piping command to qcmd via stdin
 	if _, err := exec.LookPath("qcmd"); err == nil {
-		subCmd := exec.Command("sh", "-c", fmt.Sprintf("echo %s | qcmd", strconv.Quote(cmd)))
+		subCmd := exec.Command("qcmd", cmd)
 		out, err := subCmd.Output()
 		if err == nil {
 			res := strings.TrimSpace(string(out))
