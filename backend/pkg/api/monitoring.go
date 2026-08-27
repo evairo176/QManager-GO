@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -61,13 +62,6 @@ func (s *Server) alertsGet(w http.ResponseWriter) {
 	emailPwSet := qmStr(emailCfg["app_password"]) != ""
 	emailThreshold := qmCfgInt(emailCfg, "threshold_minutes", 5)
 
-	// --- Discord ---
-	dcCfg := qmReadJSONFile(discordConfigPath)
-	dcEnabled := qmBool(dcCfg["enabled"])
-	dcOwner := qmStr(dcCfg["owner_discord_id"])
-	dcTokenSet := qmStr(dcCfg["bot_token"]) != ""
-	dcThreshold := qmCfgInt(dcCfg, "threshold_minutes", 5)
-
 	// --- Routing ---
 	routing := qmReadJSONFile(routingConfigPath)
 	events := map[string]any{}
@@ -79,12 +73,11 @@ func (s *Server) alertsGet(w http.ResponseWriter) {
 
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
-		"alerts": map[string]any{
-			"enabled": smsEnabled || emailEnabled || dcEnabled,
+		"channels": map[string]any{
 			"sms": map[string]any{
-				"enabled":          smsEnabled,
-				"recipient_phone":  smsPhone,
-				"configured":       smsPhone != "",
+				"enabled":           smsEnabled,
+				"recipient_phone":   smsPhone,
+				"configured":        smsPhone != "",
 				"threshold_minutes": smsThreshold,
 			},
 			"email": map[string]any{
@@ -96,24 +89,27 @@ func (s *Server) alertsGet(w http.ResponseWriter) {
 				"msmtp_installed":   fileExistsAny("/usr/bin/msmtp", "/usr/sbin/msmtp"),
 				"threshold_minutes": emailThreshold,
 			},
-			"discord": map[string]any{
-				"enabled":          dcEnabled,
-				"owner_discord_id": dcOwner,
-				"bot_token_set":    dcTokenSet,
-				"configured":       dcOwner != "" && dcTokenSet,
-				"connected":        qmBool(qmReadJSONFile("/tmp/qmanager_discord_status.json")["connected"]),
-				"threshold_minutes": dcThreshold,
-			},
 		},
 		"routing": map[string]any{
 			"events": events,
+		},
+		"capabilities": map[string]any{
+			"connection_lost": map[string]any{
+				"sms": true, "email": false, "email_reason": "email_needs_internet",
+			},
+			"connection_restored": map[string]any{
+				"sms": true, "email": true,
+			},
+			"reboot": map[string]any{
+				"sms": true, "email": true,
+			},
 		},
 		"reboots": reboots,
 	})
 }
 
 func readRebootHistory() []map[string]any {
-	var out []map[string]any
+	out := []map[string]any{}
 	if data, err := os.ReadFile("/etc/qmanager/crash.log"); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
 			line = strings.TrimSpace(line)
@@ -122,15 +118,21 @@ func readRebootHistory() []map[string]any {
 			}
 			// format: <epoch>|reboot|reason
 			parts := strings.Split(line, "|")
-			item := map[string]any{"reason": "unknown"}
+			epoch := 0
+			cause := "unplanned"
+			if len(parts) >= 1 {
+				epoch, _ = strconv.Atoi(strings.TrimSpace(parts[0]))
+			}
 			if len(parts) >= 2 {
-				item["timestamp"] = parts[0]
-				item["reason"] = parts[1]
+				reason := strings.ToLower(parts[1])
+				switch {
+				case strings.Contains(reason, "watchdog"):
+					cause = "watchdog"
+				case strings.Contains(reason, "user"), strings.Contains(reason, "scheduled"):
+					cause = "user"
+				}
 			}
-			if len(parts) >= 3 {
-				item["source"] = parts[2]
-			}
-			out = append(out, item)
+			out = append(out, map[string]any{"epoch": epoch, "cause": cause})
 		}
 	}
 	return out
@@ -194,11 +196,15 @@ func (s *Server) alertsPost(w http.ResponseWriter, r *http.Request) {
 		})
 
 	case "get_log":
-		var lines []map[string]any
+		lines := []map[string]any{}
 		if data, err := os.ReadFile(alertLogPath); err == nil {
 			_ = json.Unmarshal(data, &lines)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "log": lines})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success": true,
+			"entries": lines,
+			"total":   len(lines),
+		})
 
 	case "install_status":
 		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "status": "idle"})
