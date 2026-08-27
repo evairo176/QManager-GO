@@ -14,14 +14,94 @@ import (
 type SessionStore struct {
 	mu       sync.Mutex
 	sessions map[string]time.Time
+	filePath string
 }
 
 var globalSessions = &SessionStore{
 	sessions: make(map[string]time.Time),
+	filePath: "/etc/qmanager/sessions.json",
+}
+
+// LoadSessionsFromDisk is called at startup to restore persisted sessions.
+func LoadSessionsFromDisk() {
+	globalSessions.loadFromDisk()
+}
+
+// loadFromDisk restores persisted sessions after a modem reboot so "remember
+// me" logins survive restarts. Call once at startup.
+func (ss *SessionStore) loadFromDisk() {
+	data, err := os.ReadFile(ss.filePath)
+	if err != nil {
+		return // no persisted sessions (or first boot) — fine
+	}
+	var saved map[string]int64
+	if json.Unmarshal(data, &saved) != nil {
+		return
+	}
+	now := time.Now()
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	for tok, exp := range saved {
+		if time.Unix(exp, 0).After(now) {
+			ss.sessions[tok] = time.Unix(exp, 0)
+		}
+	}
+}
+
+// persist writes the current session map to disk so remembered sessions
+// survive modem reboots.
+func (ss *SessionStore) persist() {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	saved := make(map[string]int64, len(ss.sessions))
+	now := time.Now()
+	for tok, exp := range ss.sessions {
+		if exp.After(now) {
+			saved[tok] = exp.Unix()
+		}
+	}
+	data, err := json.Marshal(saved)
+	if err != nil {
+		return
+	}
+	tmp := ss.filePath + ".tmp"
+	if os.WriteFile(tmp, data, 0600) == nil {
+		_ = os.Rename(tmp, ss.filePath)
+	}
+}
+
+// issueSession creates a session token with the given lifetime, persists it,
+// and sets both cookies.
+func (ss *SessionStore) issueSession(w http.ResponseWriter, lifetime time.Duration) {
+	token := generateToken()
+	expiry := time.Now().Add(lifetime)
+
+	ss.mu.Lock()
+	ss.sessions[token] = expiry
+	ss.mu.Unlock()
+	ss.persist()
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "qmanager_session",
+		Value:    token,
+		Path:     "/",
+		Expires:  expiry,
+		HttpOnly: true,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     "qm_logged_in",
+		Value:    "1",
+		Path:     "/",
+		Expires:  expiry,
+		HttpOnly: false,
+	})
 }
 
 type LoginRequest struct {
 	Password string `json:"password"`
+	// Remember extends the session to 30 days (persisted across reboots).
+	// When false, the session lasts until the browser closes.
+	Remember bool `json:"remember"`
 }
 
 const authConfigPath = "/etc/qmanager/auth.json"
@@ -79,29 +159,13 @@ func (s *Server) HandleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate session token
-	token := generateToken()
-	globalSessions.mu.Lock()
-	globalSessions.sessions[token] = time.Now().Add(24 * time.Hour)
-	globalSessions.mu.Unlock()
-
-	// 1. Secure HTTP-only session cookie for backend auth verification
-	http.SetCookie(w, &http.Cookie{
-		Name:     "qmanager_session",
-		Value:    token,
-		Path:     "/",
-		Expires:  time.Now().Add(24 * time.Hour),
-		HttpOnly: true,
-	})
-
-	// 2. Client-accessible indicator cookie for Next.js AuthGate (document.cookie)
-	http.SetCookie(w, &http.Cookie{
-		Name:     "qm_logged_in",
-		Value:    "1",
-		Path:     "/",
-		Expires:  time.Now().Add(24 * time.Hour),
-		HttpOnly: false,
-	})
+	// Generate session token — 30 days when "remember me" is checked,
+	// otherwise a browser-session cookie (expires on close).
+	if req.Remember {
+		globalSessions.issueSession(w, 30*24*time.Hour)
+	} else {
+		globalSessions.issueSession(w, 24*time.Hour)
+	}
 
 	_ = json.NewEncoder(w).Encode(LoginResponse{
 		Success: true,
@@ -117,6 +181,7 @@ func (s *Server) HandleAuthLogout(w http.ResponseWriter, r *http.Request) {
 		globalSessions.mu.Lock()
 		delete(globalSessions.sessions, cookie.Value)
 		globalSessions.mu.Unlock()
+		globalSessions.persist()
 	}
 
 	http.SetCookie(w, &http.Cookie{

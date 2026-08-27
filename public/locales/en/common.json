@@ -53,6 +53,7 @@
     "brand_label": "QManager operator console",
     "welcome": "Welcome to QManager",
     "password_label": "Password",
+    "remember_me": "Remember me (stay signed in for 30 days)",
     "submit": "Sign in",
     "signing_in": "Signing in…",
     "locked": "Locked ({{seconds}}s)",

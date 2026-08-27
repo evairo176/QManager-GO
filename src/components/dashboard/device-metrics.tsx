@@ -453,27 +453,44 @@ const DeviceMetricsComponent = ({
               </p>
             </div>
             {loadAvg && (
-              <div className="flex h-10 items-end gap-2">
-                {parseLoadAvg(loadAvg).map((val, i) => (
-                  <div key={i} className="flex flex-1 flex-col items-center gap-1">
-                    <div className="relative h-7 w-full overflow-hidden rounded-md bg-muted/40">
-                      <div
-                        className={`absolute bottom-0 left-0 right-0 rounded-md ${
-                          val >= 2
-                            ? "bg-destructive/70"
-                            : val >= 1
-                              ? "bg-warning/70"
-                              : "bg-success/70"
-                        }`}
-                        style={{ height: `${Math.min(100, val * 35)}%` }}
-                      />
+              <>
+                <div className="flex h-10 items-end gap-2">
+                  {parseLoadAvg(loadAvg).map((val, i) => (
+                    <div key={i} className="flex flex-1 flex-col items-center gap-1">
+                      <div className="relative h-7 w-full overflow-hidden rounded-md bg-muted/40">
+                        <div
+                          className={`absolute bottom-0 left-0 right-0 rounded-md ${
+                            val >= 2
+                              ? "bg-destructive/70"
+                              : val >= 1
+                                ? "bg-warning/70"
+                                : "bg-success/70"
+                          }`}
+                          style={{ height: `${Math.min(100, val * 35)}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] leading-none text-muted-foreground tabular-nums">
+                        {["1m", "5m", "15m"][i]} {val.toFixed(2)}
+                      </span>
                     </div>
-                    <span className="text-[10px] leading-none text-muted-foreground tabular-nums">
-                      {["1m", "5m", "15m"][i]} {val.toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+                {/* Legend: what the load values mean */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-none text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="size-2 rounded-sm bg-success/70" />
+                    {t("metrics.load_legend_idle")}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="size-2 rounded-sm bg-warning/70" />
+                    {t("metrics.load_legend_busy")}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="size-2 rounded-sm bg-destructive/70" />
+                    {t("metrics.load_legend_overloaded")}
+                  </span>
+                </div>
+              </>
             )}
           </div>
 

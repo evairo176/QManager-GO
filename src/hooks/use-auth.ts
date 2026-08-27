@@ -50,13 +50,13 @@ export function useLogin() {
 
   const loginMutation = useMutation({
     mutationFn: async (
-      password: string,
+      args: { password: string; remember: boolean },
     ): Promise<{ success: boolean; error?: string; retry_after?: number }> => {
       try {
         const resp = await fetch(LOGIN_ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password }),
+          body: JSON.stringify({ password: args.password, remember: args.remember }),
         });
         const data = await resp.json();
 
@@ -114,7 +114,8 @@ export function useLogin() {
     },
   });
 
-  const login = (password: string) => loginMutation.mutateAsync(password);
+  const login = (password: string, remember = false) =>
+    loginMutation.mutateAsync({ password, remember });
   const setup = (
     password: string,
     confirm: string,

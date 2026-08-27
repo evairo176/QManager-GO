@@ -52,6 +52,9 @@ func main() {
 	server := api.NewServer(atClient)
 	server.RegisterRoutes(mux)
 
+	// Restore persisted "remember me" sessions from disk (survives reboots).
+	api.LoadSessionsFromDisk()
+
 	// API Health Check
 	mux.HandleFunc("/cgi-bin/quecmanager/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

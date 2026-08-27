@@ -38,6 +38,7 @@ export default function LoginComponent() {
   const recoveryPanelId = useId();
 
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -89,7 +90,7 @@ export default function LoginComponent() {
       setError("");
       setIsSubmitting(true);
       try {
-        const result = await login(password);
+        const result = await login(password, remember);
         if (!result.success) {
           if (result.retry_after) {
             setRetryAfter(result.retry_after);
@@ -119,7 +120,7 @@ export default function LoginComponent() {
         setIsSubmitting(false);
       }
     },
-    [password, login, t],
+    [password, remember, login, t],
   );
 
   const isPreparing = status === "loading" || status === "setup_required";
@@ -312,6 +313,21 @@ export default function LoginComponent() {
                 <span>{error}</span>
               </div>
             )}
+
+            <Field>
+              {/* Remember me — keeps the session for 30 days (persisted across
+                  reboots) so the password isn't needed on every access. */}
+              <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(e) => setRemember(e.target.checked)}
+                  disabled={isSubmitting}
+                  className="border-border bg-background text-primary focus-visible:ring-ring/50 size-4 shrink-0 cursor-pointer rounded border accent-current outline-none focus-visible:ring-2"
+                />
+                <span>{t("login.remember_me")}</span>
+              </label>
+            </Field>
 
             <Field>
               <Button
