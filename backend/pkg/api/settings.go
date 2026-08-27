@@ -34,11 +34,27 @@ func (s *Server) HandleCellularSettings(w http.ResponseWriter, r *http.Request) 
 			slot = 2
 		}
 
+		// Preferred network mode via AT+CNMP (Quectel): 2=4G only, 9=5G only,
+		// 13=4G/5G auto, 0=AUTO all. Fall back to "AUTO" if unsupported.
+		prefMode := "AUTO"
+		if resp, err := s.atClient.Exec(`AT+CNMP?`); err == nil {
+			switch {
+			case atContains(resp, "+CNMP: 2"):
+				prefMode = "4G_ONLY"
+			case atContains(resp, "+CNMP: 9"):
+				prefMode = "5G_ONLY"
+			case atContains(resp, "+CNMP: 13"):
+				prefMode = "4G_5G"
+			case atContains(resp, "+CNMP: 0"):
+				prefMode = "AUTO"
+			}
+		}
+
 		_ = json.NewEncoder(w).Encode(CellularSettingsResponse{
 			Success: true,
 			Settings: map[string]interface{}{
 				"sim_slot":    slot,
-				"pref_mode":   "AUTO",
+				"pref_mode":   prefMode,
 				"auto_switch": false,
 			},
 		})
@@ -55,6 +71,18 @@ func (s *Server) HandleCellularSettings(w http.ResponseWriter, r *http.Request) 
 		if req.SimSlot == 1 || req.SimSlot == 2 {
 			atCmd := fmt.Sprintf(`AT+QUIMSLOT=%d`, req.SimSlot)
 			_, _ = s.atClient.Exec(atCmd)
+		}
+
+		if req.PrefMode != "" {
+			cnmp := map[string]string{
+				"4G_ONLY": "2",
+				"5G_ONLY": "9",
+				"4G_5G":   "13",
+				"AUTO":    "0",
+			}[req.PrefMode]
+			if cnmp != "" {
+				_, _ = s.atClient.Exec(`AT+CNMP=` + cnmp)
+			}
 		}
 
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})

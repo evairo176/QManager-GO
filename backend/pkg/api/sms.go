@@ -1,9 +1,12 @@
 package api
 
 import (
+	"bufio"
 	"encoding/json"
 	"net/http"
 	"os/exec"
+	"strconv"
+	"strings"
 )
 
 type SMSItem struct {
@@ -51,21 +54,101 @@ func (s *Server) HandleSMS(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
 }
 
+func smsToolBin() string {
+	for _, p := range []string{"/usr/bin/sms_tool", "/opt/sbin/sms_tool", "/usr/sbin/sms_tool"} {
+		if _, err := exec.LookPath(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
 func (s *Server) handleGetSMS(w http.ResponseWriter, r *http.Request) {
-	// Set storage routing to ME
+	// Ensure storage routing to ME
 	_, _ = s.atClient.Exec(`AT+CPMS="ME","ME","ME"`)
 
-	// Development / Fallback response
-	resp := SMSResponse{
-		Success:  true,
-		Messages: []SMSItem{},
-		Storage: map[string]SMSStorageInfo{
-			"me": {Used: 0, Total: 255},
-			"sm": {Used: 0, Total: 50},
-		},
+	storage := map[string]SMSStorageInfo{"me": {Used: 0, Total: 255}, "sm": {Used: 0, Total: 50}}
+	messages := []SMSItem{}
+
+	bin := smsToolBin()
+	if bin != "" {
+		// Storage usage
+		if out, err := exec.Command(bin, "status").Output(); err == nil {
+			line := strings.TrimSpace(string(out))
+			// "Storage type: ME, used: 1, total: 127"
+			used, total := 0, 255
+			if idx := strings.Index(line, "used:"); idx >= 0 {
+				rest := line[idx+5:]
+				if end := strings.Index(rest, ","); end >= 0 {
+					rest = rest[:end]
+				}
+				used, _ = strconv.Atoi(strings.TrimSpace(rest))
+			}
+			if idx := strings.Index(line, "total:"); idx >= 0 {
+				total, _ = strconv.Atoi(strings.TrimSpace(line[idx+6:]))
+			}
+			storage["me"] = SMSStorageInfo{Used: used, Total: total}
+		}
+
+		// List messages
+		if out, err := exec.Command(bin, "recv").Output(); err == nil {
+			messages = parseSmsToolOutput(string(out))
+		}
 	}
 
-	_ = json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(SMSResponse{
+		Success:  true,
+		Messages: messages,
+		Storage:  storage,
+	})
+}
+
+// parseSmsToolOutput parses "sms_tool recv" output into SMSItem entries.
+// Format:
+//
+//	MSG: 0
+//	From: 9046
+//	Date/Time: 08/26/26 14:21:52
+//	<message body lines...>
+func parseSmsToolOutput(raw string) []SMSItem {
+	var items []SMSItem
+	scanner := bufio.NewScanner(strings.NewReader(raw))
+	var cur *SMSItem
+	var body strings.Builder
+
+	flush := func() {
+		if cur == nil {
+			return
+		}
+		cur.Text = strings.TrimSpace(body.String())
+		items = append(items, *cur)
+		cur = nil
+		body.Reset()
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, "MSG:"):
+			flush()
+			idx, _ := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(trimmed, "MSG:")))
+			cur = &SMSItem{Index: idx, Storage: "me"}
+		case cur == nil:
+			// ignore headers before first MSG
+		case strings.HasPrefix(trimmed, "From:"):
+			cur.Sender = strings.TrimSpace(strings.TrimPrefix(trimmed, "From:"))
+		case strings.HasPrefix(trimmed, "Date/Time:"):
+			cur.Date = strings.TrimSpace(strings.TrimPrefix(trimmed, "Date/Time:"))
+		default:
+			if trimmed != "" {
+				body.WriteString(line)
+				body.WriteString("\n")
+			}
+		}
+	}
+	flush()
+	return items
 }
 
 func (s *Server) handlePostSMS(w http.ResponseWriter, r *http.Request) {
@@ -79,6 +162,8 @@ func (s *Server) handlePostSMS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	bin := smsToolBin()
+
 	switch req.Action {
 	case "send":
 		if req.Phone == "" || req.Message == "" {
@@ -89,24 +174,40 @@ func (s *Server) handlePostSMS(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		// Send SMS via sms_tool or AT command
-		if _, err := exec.LookPath("sms_tool"); err == nil {
-			cmd := exec.Command("sms_tool", "send", req.Phone, req.Message)
-			if err := cmd.Run(); err != nil {
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{
-					"success": false,
-					"error":   "send_failed",
-					"detail":  err.Error(),
-				})
-				return
-			}
+		if bin == "" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "sms_tool_missing"})
+			return
 		}
-
+		cmd := exec.Command(bin, "send", req.Phone, req.Message)
+		if err := cmd.Run(); err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "send_failed",
+				"detail":  err.Error(),
+			})
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 
 	case "delete", "delete_all":
 		// Auto re-assert CPMS routing
 		_, _ = s.atClient.Exec(`AT+CPMS="ME","ME","ME"`)
+		if bin == "" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "sms_tool_missing"})
+			return
+		}
+		if req.Action == "delete_all" {
+			_ = exec.Command(bin, "delete", "all").Run()
+		} else {
+			// delete specific index or all items provided
+			if len(req.Items) > 0 {
+				for _, it := range req.Items {
+					_ = exec.Command(bin, "delete", strconv.Itoa(it.Index)).Run()
+				}
+			} else {
+				_ = exec.Command(bin, "delete", "all").Run()
+			}
+		}
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 
 	default:

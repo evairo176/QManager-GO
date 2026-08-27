@@ -499,10 +499,33 @@ func (s *Server) HandleTrafficMasquerade(w http.ResponseWriter, r *http.Request)
 // HandleSMSForwarding handles SMS forwarding service config
 func (s *Server) HandleSMSForwarding(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	cfg := qmReadJSONFile("/etc/qmanager/sms_forwarding.json")
+	enabled := qmBool(cfg["enabled"])
+	number := qmStr(cfg["number"])
+
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "invalid_json"})
+			return
+		}
+		if v, ok := body["enabled"].(bool); ok {
+			enabled = v
+		}
+		if v, ok := body["number"].(string); ok {
+			number = v
+		}
+		writeJSONFile("/etc/qmanager/sms_forwarding.json", map[string]any{
+			"enabled": enabled,
+			"number":  number,
+		})
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"enabled": false,
-		"number":  "",
+		"enabled": enabled,
+		"number":  number,
 	})
 }
 
@@ -565,13 +588,28 @@ func (s *Server) HandleFPLMN(w http.ResponseWriter, r *http.Request) {
 // HandleKnownSims handles known SIMs counter and clear
 func (s *Server) HandleKnownSims(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if r.Method == http.MethodPost {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "count": 1})
-		return
+
+	// Known SIMs tracked in a JSON list of ICCIDs
+	path := "/etc/qmanager/known_sims.json"
+	var sims []string
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, &sims)
 	}
+
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		action, _ := body["action"].(string)
+		if action == "clear" || action == "reset" {
+			sims = []string{}
+			_ = os.WriteFile(path, []byte("[]"), 0600)
+		}
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"count":   1,
+		"count":   len(sims),
+		"sims":    sims,
 	})
 }
 

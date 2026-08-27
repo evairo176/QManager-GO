@@ -347,16 +347,62 @@ func (s *Server) HandleSystemSettings(w http.ResponseWriter, r *http.Request) {
 // HandleSIMSlot manages active SIM slot state
 func (s *Server) HandleSIMSlot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
 	if r.Method == http.MethodPost {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "SIM slot switched"})
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+			if v, ok := body["slot"].(float64); ok && (v == 1 || v == 2) {
+				_, _ = s.atClient.Exec(fmt.Sprintf(`AT+QUIMSLOT=%d`, int(v)))
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "SIM slot switched", "active_slot": int(v)})
+				return
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "invalid_slot", "detail": "slot must be 1 or 2"})
 		return
 	}
+
+	// GET: read actual slot state
+	slot := 1
+	if resp, err := s.atClient.Exec(`AT+QUIMSLOT?`); err == nil && atContains(resp, "+QUIMSLOT: 2") {
+		slot = 2
+	}
+
+	sim1 := map[string]interface{}{"status": "empty", "iccid": ""}
+	sim2 := map[string]interface{}{"status": "empty", "iccid": ""}
+
+	// SIM 1 (or active slot) status
+	if resp, err := s.atClient.Exec(`AT+CPIN?`); err == nil {
+		status := "ready"
+		if atContains(resp, "+CME ERROR") || atContains(resp, "NOT INSERTED") {
+			status = "absent"
+		} else if atContains(resp, "SIM PIN") {
+			status = "pin_required"
+		}
+		if slot == 1 {
+			sim1["status"] = status
+		} else {
+			sim2["status"] = status
+		}
+	}
+
+	// ICCID of active slot
+	if resp, err := s.atClient.Exec(`AT+ICCID`); err == nil {
+		iccid := parseSingleLineParam(resp, "+ICCID:")
+		if iccid != "" {
+			if slot == 1 {
+				sim1["iccid"] = iccid
+			} else {
+				sim2["iccid"] = iccid
+			}
+		}
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":     true,
-		"active_slot": 1,
+		"active_slot": slot,
 		"total_slots": 2,
-		"sim1":        map[string]interface{}{"status": "ready", "iccid": ""},
-		"sim2":        map[string]interface{}{"status": "empty", "iccid": ""},
+		"sim1":        sim1,
+		"sim2":        sim2,
 	})
 }
 
