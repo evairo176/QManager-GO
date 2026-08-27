@@ -363,15 +363,38 @@ func (s *Server) HandleProfilesCurrentSettings(w http.ResponseWriter, r *http.Re
 }
 
 // HandleScenariosList lists connection scenarios
+// Frontend contract (types/connection-scenario.ts StoredScenario):
+//   { id, name, description, gradient, config: {atModeValue, mode, optimization, lte_bands, nsa_nr_bands, sa_nr_bands} }
+// Missing gradient/config crashes connection-scenario-card.tsx (spread ...s then
+// ScenarioItem reads scenario.gradient).
 func (s *Server) HandleScenariosList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Standard connection scenarios (fixed set)
 	scenarios := []map[string]interface{}{
-		{"id": "balanced", "name": "Balanced", "description": "Balanced speed and stability"},
-		{"id": "performance", "name": "Performance", "description": "Maximum throughput"},
-		{"id": "stable", "name": "Stable", "description": "Prioritize connection stability"},
-		{"id": "low_latency", "name": "Low Latency", "description": "Minimize latency for gaming/voip"},
+		{
+			"id": "balanced", "name": "Balanced", "description": "Balanced speed and stability",
+			"gradient": "from-emerald-500 via-teal-500 to-cyan-500",
+			"config": map[string]interface{}{
+				"atModeValue": "AUTO", "mode": "Auto", "optimization": "Balanced",
+				"lte_bands": "", "nsa_nr_bands": "", "sa_nr_bands": "",
+			},
+		},
+		{
+			"id": "gaming", "name": "Gaming", "description": "Low latency for gaming and VoIP",
+			"gradient": "from-violet-600 via-purple-600 to-indigo-700",
+			"config": map[string]interface{}{
+				"atModeValue": "AUTO", "mode": "Auto", "optimization": "Latency",
+				"lte_bands": "", "nsa_nr_bands": "", "sa_nr_bands": "",
+			},
+		},
+		{
+			"id": "streaming", "name": "Streaming", "description": "High throughput for streaming",
+			"gradient": "from-rose-500 via-pink-500 to-orange-400",
+			"config": map[string]interface{}{
+				"atModeValue": "AUTO", "mode": "Auto", "optimization": "Throughput",
+				"lte_bands": "", "nsa_nr_bands": "", "sa_nr_bands": "",
+			},
+		},
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{

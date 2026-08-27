@@ -621,12 +621,37 @@ func (s *Server) HandleSoftwareUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleCellScanStart initiates background cell scanner
+// Real implementation: checks the running flag, touches it, fires AT+QSCAN
+// asynchronously (takes 30-90s), writes results to /tmp/qmanager_scan_results.txt,
+// then clears the flag. FE polls cell_scan_status.sh while scanning.
 func (s *Server) HandleCellScanStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	if fileExists("/tmp/qmanager_long_running") {
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "already_running",
+			"detail":  "A scan is already in progress",
+		})
+		return
+	}
+
+	// Mark running BEFORE launching so status polling sees it immediately
+	_ = os.WriteFile("/tmp/qmanager_long_running", []byte("scan"), 0644)
+
+	go func() {
+		// AT+QSCAN is long-running (30-90s); exec qcmd directly with a timeout.
+		// The atClient Exec call would block this goroutine only — fine.
+		out, _ := s.atClient.Exec(`AT+QSCAN`)
+		// Persist raw output for the status handler to parse
+		_ = os.WriteFile("/tmp/qmanager_scan_results.txt", []byte(out), 0644)
+		// Clear running flag
+		_ = os.Remove("/tmp/qmanager_long_running")
+	}()
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"status":  "completed",
-		"cells":   []interface{}{},
+		"status":  "running",
 	})
 }
 
