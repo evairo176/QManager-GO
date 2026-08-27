@@ -475,48 +475,79 @@ func (s *Server) HandleDNS(w http.ResponseWriter, r *http.Request) {
 	if dns2 == "" {
 		dns2 = "1.0.0.1"
 	}
+	dns3 := qmStr(cfg["dns3"])
+	dns1v6 := qmStr(cfg["dns1v6"])
+	dns2v6 := qmStr(cfg["dns2v6"])
+	nic := qmStr(cfg["nic"])
+	if nic == "" {
+		nic = "lan"
+	}
 	enabled := qmBool(cfg["enabled"])
 
 	if r.Method == http.MethodPost {
 		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
-			if v, ok := body["dns"].(map[string]any); ok {
-				if m, ok2 := v["mode"].(string); ok2 {
-					mode = m
-				}
-				if p, ok2 := v["preset"].(string); ok2 {
-					preset = p
-				}
-				if d, ok2 := v["dns1"].(string); ok2 {
-					dns1 = d
-				}
-				if d, ok2 := v["dns2"].(string); ok2 {
-					dns2 = d
-				}
-				if e, ok2 := v["enabled"].(bool); ok2 {
-					enabled = e
-				}
+			// Frontend sends flat fields (mode, nic, dns1..dns3, dns1v6..dns2v6).
+			if m, ok := body["mode"].(string); ok && m != "" {
+				mode = m
+			}
+			if p, ok := body["preset"].(string); ok {
+				preset = p
+			}
+			if n, ok := body["nic"].(string); ok {
+				nic = n
+			}
+			if d, ok := body["dns1"].(string); ok {
+				dns1 = d
+			}
+			if d, ok := body["dns2"].(string); ok {
+				dns2 = d
+			}
+			if d, ok := body["dns3"].(string); ok {
+				dns3 = d
+			}
+			if d, ok := body["dns1v6"].(string); ok {
+				dns1v6 = d
+			}
+			if d, ok := body["dns2v6"].(string); ok {
+				dns2v6 = d
+			}
+			if e, ok := body["enabled"].(bool); ok {
+				enabled = e
 			}
 			writeJSONFile("/etc/qmanager/custom_dns.json", map[string]any{
 				"mode":    mode,
 				"preset":  preset,
+				"nic":     nic,
 				"dns1":    dns1,
 				"dns2":    dns2,
+				"dns3":    dns3,
+				"dns1v6":  dns1v6,
+				"dns2v6":  dns2v6,
 				"enabled": enabled,
 			})
 		}
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"dns": map[string]interface{}{
-			"mode":    mode,
-			"preset":  preset,
-			"dns1":    dns1,
-			"dns2":    dns2,
-			"enabled": enabled,
-		},
+		"success":     true,
+		"mode":        mode,
+		"currentDNS":  joinDnsList(dns1, dns2, dns3),
+		"currentDNS6": joinDnsList(dns1v6, dns2v6),
+		"nic":         nic,
 	})
+}
+
+// joinDnsList joins non-empty DNS entries into the comma-separated wire format
+// the frontend splits back into dns1/dns2/dns3.
+func joinDnsList(parts ...string) string {
+	var out []string
+	for _, p := range parts {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, ",")
 }
 
 // HandleVideoOptimizer manages Traffic Engine & DPI masking settings.

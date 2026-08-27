@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
@@ -77,29 +77,32 @@ export function useDnsSettings(): UseDnsSettingsReturn {
   });
 
   // Parse comma-separated DNS strings into individual fields.
+  // CRITICAL: memoize so the object reference is stable across renders — the
+  // consuming card uses `data !== prevData` as a render-phase sync guard, so
+  // a fresh object every render would cause an infinite re-render (React #301).
   const json = query.data;
-  const parts = (json?.currentDNS || "")
-    .split(",")
-    .map((s: string) => s.trim())
-    .filter(Boolean);
-  const parts6 = (json?.currentDNS6 || "")
-    .split(",")
-    .map((s: string) => s.trim())
-    .filter(Boolean);
-
-  const data: DnsSettingsData | null = json
-    ? {
-        mode: json.mode === "enabled" ? "enabled" : "disabled",
-        currentDNS: json.currentDNS || "",
-        currentDNS6: json.currentDNS6 || "",
-        nic: json.nic === "lan_bind4" ? "lan_bind4" : "lan",
-        dns1: parts[0] || "",
-        dns2: parts[1] || "",
-        dns3: parts[2] || "",
-        dns1v6: parts6[0] || "",
-        dns2v6: parts6[1] || "",
-      }
-    : null;
+  const data: DnsSettingsData | null = useMemo(() => {
+    if (!json) return null;
+    const parts = (json.currentDNS || "")
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+    const parts6 = (json.currentDNS6 || "")
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+    return {
+      mode: json.mode === "enabled" ? "enabled" : "disabled",
+      currentDNS: json.currentDNS || "",
+      currentDNS6: json.currentDNS6 || "",
+      nic: json.nic === "lan_bind4" ? "lan_bind4" : "lan",
+      dns1: parts[0] || "",
+      dns2: parts[1] || "",
+      dns3: parts[2] || "",
+      dns1v6: parts6[0] || "",
+      dns2v6: parts6[1] || "",
+    };
+  }, [json]);
 
   const error = query.error ? query.error.message : null;
 

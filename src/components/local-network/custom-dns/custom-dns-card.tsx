@@ -58,21 +58,23 @@ const CustomDNSCard = () => {
 
   // Seed local form state when data arrives from the backend. Uses the
   // render-phase derived-state pattern (React docs: "You Might Not Need an
-  // Effect") instead of useEffect, so the sync lands in the same commit rather
+  // Sync incoming data into local form state. Kept as a render-phase
+  // adjustment (setState during render) — the canonical React pattern for
+  // deriving state from props — so the sync lands in the same commit rather
   // than a second render. prevData makes it re-run only when the source object
   // reference changes — identical semantics to the previous [data] effect.
   const [prevData, setPrevData] = useState(data);
   if (data && data !== prevData) {
     setPrevData(data);
     setIsEnabled(data.mode === "enabled");
-    setDns1(data.dns1);
-    setDns2(data.dns2);
-    setDns3(data.dns3);
-    setDns1v6(data.dns1v6);
-    setDns2v6(data.dns2v6);
+    setDns1(data.dns1 ?? "");
+    setDns2(data.dns2 ?? "");
+    setDns3(data.dns3 ?? "");
+    setDns1v6(data.dns1v6 ?? "");
+    setDns2v6(data.dns2v6 ?? "");
     // Recognise a known provider from the saved addresses; else fall to Custom.
     setProvider(
-      matchProvider(data.dns1, data.dns2, data.dns3, data.dns1v6, data.dns2v6),
+      matchProvider(data.dns1 ?? "", data.dns2 ?? "", data.dns3 ?? "", data.dns1v6 ?? "", data.dns2v6 ?? ""),
     );
   }
 
