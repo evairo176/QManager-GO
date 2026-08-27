@@ -59,6 +59,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/cgi-bin/quecmanager/system/logs.sh", s.HandleSystemLogs)
 	mux.HandleFunc("/cgi-bin/quecmanager/system/ipa_offload.sh", s.HandleIPAOffload)
 	mux.HandleFunc("/cgi-bin/quecmanager/system/realtime.sh", s.HandleRealtime)
+	mux.HandleFunc("/cgi-bin/quecmanager/system/data_usage.sh", s.HandleDataUsage)
 	mux.HandleFunc("/cgi-bin/quecmanager/public/overview.sh", s.HandlePublicOverview)
 
 	// APN & MBN Management Routes

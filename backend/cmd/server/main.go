@@ -90,6 +90,9 @@ func main() {
 	// Reads ws_port from qmanager.conf bridge_monitor; defaults to 8838.
 	server.StartBandwidthWebSocket(0)
 
+	// Data usage (quota) sampler — accumulates /proc/net/dev deltas to disk.
+	server.StartDataUsageTracker()
+
 	var tlsServer *http.Server
 
 	// Setup HTTPS TLS Certificates if enabled
