@@ -14,29 +14,32 @@ LOCAL_ARM7="backend/dist/qmanager-core-armv7"
 LOCAL_ARM64="backend/dist/qmanager-core-arm64"
 LOCAL_AMD64="backend/dist/qmanager-core-amd64"
 LOCAL_DEFAULT="backend/dist/qmanager-core"
-SYSTEMD_SERVICE="backend/qmanager-core.service"
-OPENWRT_INIT="scripts/etc/init.d/qmanager-core"
 
-echo "========================================="
-echo " 🚀 QManager Go Universal Deployment Tool"
-echo "========================================="
-
-# Ensure binaries exist; run build-go.sh if missing
+# Fallback binary picker
 if [ ! -f "$LOCAL_DEFAULT" ]; then
-    echo "==> Building Go executables..."
-    if [ -f "./build-go.sh" ]; then
-        ./build-go.sh
+    if [ -f "$LOCAL_ARM7" ]; then
+        LOCAL_DEFAULT="$LOCAL_ARM7"
+    elif [ -f "$LOCAL_ARM64" ]; then
+        LOCAL_DEFAULT="$LOCAL_ARM64"
+    elif [ -f "$LOCAL_AMD64" ]; then
+        LOCAL_DEFAULT="$LOCAL_AMD64"
     else
-        echo "Error: ./build-go.sh not found."
+        echo "Error: No compiled binaries found in backend/dist/. Please run ./build-go.sh first."
         exit 1
     fi
 fi
 
+SYSTEMD_SERVICE="scripts/lib/systemd/system/qmanager-core.service"
+OPENWRT_INIT="scripts/etc/init.d/qmanager-core"
+
+echo "========================================="
+echo " 🚀 Deploying QManager Go Edition"
+echo "========================================="
+
 if [ "$TARGET" = "adb" ]; then
-    echo "==> Deploying over ADB connection..."
+    echo "==> Deploying over ADB..."
     command -v adb >/dev/null 2>&1 || { echo "Error: adb command not found."; exit 1; }
 
-    adb wait-for-device
     TARGET_ARCH=$(adb shell "uname -m" 2>/dev/null | tr -d '\r\n')
     echo "==> Detected target architecture: ${TARGET_ARCH}"
 
@@ -45,7 +48,7 @@ if [ "$TARGET" = "adb" ]; then
         aarch64|arm64)
             [ -f "$LOCAL_ARM64" ] && BINARY_TO_PUSH="$LOCAL_ARM64"
             ;;
-        armv7*|armv8l|arm)
+        armv7*|arm*)
             [ -f "$LOCAL_ARM7" ] && BINARY_TO_PUSH="$LOCAL_ARM7"
             ;;
         x86_64|amd64)
@@ -53,29 +56,25 @@ if [ "$TARGET" = "adb" ]; then
             ;;
     esac
 
-    echo "==> Pushing binary: $BINARY_TO_PUSH -> /usr/bin/qmanager-core"
-    adb push "$BINARY_TO_PUSH" /usr/bin/qmanager-core
-    adb shell "chmod +x /usr/bin/qmanager-core"
+    echo "==> Remounting / read-write over ADB..."
+    adb shell "mount -o remount,rw / 2>/dev/null || true"
+    adb shell "mkdir -p /usrdata"
 
-    # Detect Init System (Systemd vs OpenWRT procd)
+    echo "==> Uploading binary: $BINARY_TO_PUSH -> /usrdata/qmanager-core"
+    adb push "$BINARY_TO_PUSH" /usrdata/qmanager-core
+    adb shell "chmod +x /usrdata/qmanager-core"
+
     HAS_SYSTEMD=$(adb shell "command -v systemctl >/dev/null 2>&1 && echo yes || echo no" | tr -d '\r\n')
-
     if [ "$HAS_SYSTEMD" = "yes" ]; then
         echo "==> Detected Init System: Systemd"
         if [ -f "$SYSTEMD_SERVICE" ]; then
             adb push "$SYSTEMD_SERVICE" /lib/systemd/system/qmanager-core.service
-            adb shell "systemctl daemon-reload && systemctl enable qmanager-core && systemctl restart qmanager-core"
-            adb shell "systemctl status qmanager-core --no-pager"
-        fi
-    else
-        echo "==> Detected Init System: OpenWRT procd (init.d)"
-        if [ -f "$OPENWRT_INIT" ]; then
-            adb push "$OPENWRT_INIT" /etc/init.d/qmanager-core
-            adb shell "chmod +x /etc/init.d/qmanager-core && /etc/init.d/qmanager-core enable && /etc/init.d/qmanager-core restart"
+            adb shell "mkdir -p /lib/systemd/system/multi-user.target.wants && ln -sf /lib/systemd/system/qmanager-core.service /lib/systemd/system/multi-user.target.wants/qmanager-core.service"
+            adb shell "systemctl daemon-reload && systemctl restart qmanager-core"
         fi
     fi
+    adb shell "mount -o remount,ro / 2>/dev/null || true"
     echo "==> ADB Deployment Complete!"
-
 else
     echo "==> Deploying over SSH to root@$TARGET..."
     command -v scp >/dev/null 2>&1 || { echo "Error: scp command not found."; exit 1; }
@@ -89,7 +88,7 @@ else
         aarch64|arm64)
             [ -f "$LOCAL_ARM64" ] && BINARY_TO_PUSH="$LOCAL_ARM64"
             ;;
-        armv7*|armv8l|arm)
+        armv7*|arm*)
             [ -f "$LOCAL_ARM7" ] && BINARY_TO_PUSH="$LOCAL_ARM7"
             ;;
         x86_64|amd64)
@@ -97,18 +96,19 @@ else
             ;;
     esac
 
-    echo "==> Uploading binary: $BINARY_TO_PUSH -> /usr/bin/qmanager-core"
-    scp "$BINARY_TO_PUSH" "root@$TARGET:/usr/bin/qmanager-core"
-    ssh "root@$TARGET" "chmod +x /usr/bin/qmanager-core"
+    ssh "root@$TARGET" "mount -o remount,rw / 2>/dev/null || true; mkdir -p /usrdata"
+    echo "==> Uploading binary: $BINARY_TO_PUSH -> /usrdata/qmanager-core"
+    scp "$BINARY_TO_PUSH" "root@$TARGET:/usrdata/qmanager-core"
+    ssh "root@$TARGET" "chmod +x /usrdata/qmanager-core"
 
-    # Detect Init System on remote device
     HAS_SYSTEMD=$(ssh "root@$TARGET" "command -v systemctl >/dev/null 2>&1 && echo yes || echo no" | tr -d '\r\n')
 
     if [ "$HAS_SYSTEMD" = "yes" ]; then
         echo "==> Detected Init System: Systemd"
         if [ -f "$SYSTEMD_SERVICE" ]; then
             scp "$SYSTEMD_SERVICE" "root@$TARGET:/lib/systemd/system/qmanager-core.service"
-            ssh "root@$TARGET" "systemctl daemon-reload && systemctl enable qmanager-core && systemctl restart qmanager-core"
+            ssh "root@$TARGET" "mkdir -p /lib/systemd/system/multi-user.target.wants && ln -sf /lib/systemd/system/qmanager-core.service /lib/systemd/system/multi-user.target.wants/qmanager-core.service"
+            ssh "root@$TARGET" "systemctl daemon-reload && systemctl restart qmanager-core"
             ssh "root@$TARGET" "systemctl status qmanager-core --no-pager"
         fi
     else
@@ -118,6 +118,7 @@ else
             ssh "root@$TARGET" "chmod +x /etc/init.d/qmanager-core && /etc/init.d/qmanager-core enable && /etc/init.d/qmanager-core restart"
         fi
     fi
+    ssh "root@$TARGET" "mount -o remount,ro / 2>/dev/null || true"
     echo "==> SSH Deployment Complete!"
 fi
 

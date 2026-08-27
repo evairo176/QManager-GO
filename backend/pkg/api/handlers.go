@@ -2,10 +2,8 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
-	"regexp"
 	"strings"
 
 	"qmanager-backend/pkg/at"
@@ -233,21 +231,6 @@ func (s *Server) HandleSendCommand(w http.ResponseWriter, r *http.Request) {
 		"response": resp,
 		"command":  req.Command,
 	})
-}
-
-func extractBandList(raw, bandType string) string {
-	lines := strings.Split(raw, "\n")
-	for _, line := range lines {
-		if strings.Contains(line, fmt.Sprintf(`"%s"`, bandType)) {
-			if bandType == "nr5g_band" && (strings.Contains(line, "nsa_") || strings.Contains(line, "nrdc_")) {
-				continue
-			}
-			re := regexp.MustCompile(fmt.Sprintf(`.*"%s",`, bandType))
-			cleaned := re.ReplaceAllString(line, "")
-			return strings.TrimSpace(cleaned)
-		}
-	}
-	return ""
 }
 
 func fileExists(path string) bool {

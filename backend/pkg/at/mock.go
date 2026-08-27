@@ -33,6 +33,10 @@ func NewMockClient() *MockClient {
 	m.RegisterResponse("AT+QUIMSLOT?", "+QUIMSLOT: 1\r\n\r\nOK")
 	m.RegisterResponse("AT+QENG=\"SERVINGCELL\"", "+QENG: \"servingcell\",\"NOCONN\",\"NR5G-SA\",\"TDD\",528,11,437000,627464,108,12,-11,-92,-11,15,0,0,0\r\n\r\nOK")
 	m.RegisterResponse("AT+QNWPREFCFG=\"ue_capability_band\"", "+QNWPREFCFG: \"lte_band\",1:3:7:28\r\n+QNWPREFCFG: \"nsa_nr5g_band\",1:3:7:28:78\r\n+QNWPREFCFG: \"nr5g_band\",1:3:7:28:78\r\n\r\nOK")
+	m.RegisterResponse("AT+QNWPREFCFG=\"lte_band\"", "+QNWPREFCFG: \"lte_band\",1:3:7:28\r\n\r\nOK")
+	m.RegisterResponse("AT+QNWPREFCFG=\"nsa_nr5g_band\"", "+QNWPREFCFG: \"nsa_nr5g_band\",1:3:7:28:78\r\n\r\nOK")
+	m.RegisterResponse("AT+QNWPREFCFG=\"nr5g_band\"", "+QNWPREFCFG: \"nr5g_band\",1:3:7:28:78\r\n\r\nOK")
+	m.RegisterResponse("AT+QNWPREFCFG=\"nrdc_nr5g_band\"", "+QNWPREFCFG: \"nrdc_nr5g_band\",1:3:7:28:78\r\n\r\nOK")
 	m.RegisterResponse("AT+CGDCONT?", "+CGDCONT: 1,\"IPV4V6\",\"internet\",\"\",0,0,0,0\r\n\r\nOK")
 	m.RegisterResponse("AT+CPMS=\"ME\",\"ME\",\"ME\"", "+CPMS: 0,255,0,255,0,255\r\n\r\nOK")
 

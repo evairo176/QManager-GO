@@ -1,0 +1,12 @@
+[Unit]
+Description=QManager Go Core Daemon
+After=ql-netd.service
+
+[Service]
+ExecStart=/usrdata/qmanager-core
+WorkingDirectory=/usrdata
+Restart=always
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target

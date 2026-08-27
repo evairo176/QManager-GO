@@ -160,36 +160,7 @@ func (s *Server) HandleMBN(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":  true,
+		"success":      true,
 		"raw_response": raw,
 	})
-}
-
-func parseAPNProfiles(raw string) []APNProfile {
-	var profiles []APNProfile
-	lines := strings.Split(raw, "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "+CGDCONT:") {
-			parts := strings.Split(line, ",")
-			if len(parts) >= 3 {
-				var cid int
-				_, _ = fmt.Sscanf(parts[0], "+CGDCONT: %d", &cid)
-				pdp := strings.Trim(parts[1], `" `)
-				apn := strings.Trim(parts[2], `" `)
-				profiles = append(profiles, APNProfile{
-					CID:     cid,
-					Name:    fmt.Sprintf("CID %d", cid),
-					APN:     apn,
-					PDPType: pdp,
-					Active:  cid == 1,
-				})
-			}
-		}
-	}
-	if len(profiles) == 0 {
-		profiles = append(profiles, APNProfile{
-			CID: 1, Name: "Default", APN: "internet", PDPType: "IPV4V6", Active: true,
-		})
-	}
-	return profiles
 }
