@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { I18nProvider } from "@/components/i18n/i18n-provider";
 import { QQueryProvider } from "@/components/query-provider";
+import { RealtimeProvider } from "@/components/realtime-provider";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -48,7 +49,9 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             <I18nProvider>
-              <QQueryProvider>{children}</QQueryProvider>
+              <QQueryProvider>
+                <RealtimeProvider>{children}</RealtimeProvider>
+              </QQueryProvider>
               <Toaster />
             </I18nProvider>
           </ThemeProvider>

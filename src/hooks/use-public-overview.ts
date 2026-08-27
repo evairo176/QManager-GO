@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useLiveInterval } from "@/components/realtime-provider";
 import type { PublicOverview } from "@/types/public-overview";
 
 // =============================================================================
@@ -25,10 +26,10 @@ const MAX_POLL_INTERVAL = 60_000;
 const BACKOFF_THRESHOLD = 6;
 const STALE_THRESHOLD_SECONDS = 15;
 
-function computeNextInterval(failures: number): number {
-  if (failures < BACKOFF_THRESHOLD) return POLL_INTERVAL;
+function computeNextInterval(failures: number, base: number): number {
+  if (failures < BACKOFF_THRESHOLD) return base;
   const exp = Math.min(failures - BACKOFF_THRESHOLD + 1, 4);
-  return Math.min(POLL_INTERVAL * 2 ** exp, MAX_POLL_INTERVAL);
+  return Math.min(base * 2 ** exp, MAX_POLL_INTERVAL);
 }
 
 export interface UsePublicOverviewReturn {
@@ -41,6 +42,8 @@ export interface UsePublicOverviewReturn {
 }
 
 export function usePublicOverview(): UsePublicOverviewReturn {
+  const livePoll = useLiveInterval(POLL_INTERVAL);
+
   const query = useQuery<PublicOverview>({
     queryKey: ["public-overview"],
     queryFn: async () => {
@@ -58,7 +61,9 @@ export function usePublicOverview(): UsePublicOverviewReturn {
     refetchInterval: (q) =>
       typeof document !== "undefined" && document.hidden
         ? false // pause polling while the tab is hidden
-        : computeNextInterval(q.state.fetchFailureCount),
+        : livePoll === false
+          ? false // realtime OFF — stop polling
+          : computeNextInterval(q.state.fetchFailureCount, livePoll),
     retry: false,
   });
 

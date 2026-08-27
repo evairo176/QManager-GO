@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
+import { useLiveInterval } from "@/components/realtime-provider";
 import type { InstallResult } from "@/types/video-optimizer";
 
 // =============================================================================
@@ -107,6 +108,9 @@ export function useTailscale(): UseTailscaleReturn {
   const installPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const livePollNormal = useLiveInterval(POLL_NORMAL_MS);
+  const livePollAuth = useLiveInterval(POLL_AUTH_MS);
+
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -141,7 +145,7 @@ export function useTailscale(): UseTailscaleReturn {
     refetchInterval: (q) => {
       const isAuthWaiting =
         q.state.data?.backend_state === "NeedsLogin" && !!q.state.data?.auth_url;
-      return isAuthWaiting ? POLL_AUTH_MS : POLL_NORMAL_MS;
+      return isAuthWaiting ? livePollAuth : livePollNormal;
     },
   });
 

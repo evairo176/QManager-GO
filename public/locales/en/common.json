@@ -162,5 +162,8 @@
       "minutes": "{{minutes}}m"
     },
     "copyright": "© {{year}} QManager"
+  },
+  "realtime": {
+    "live_data": "Live data"
   }
 }

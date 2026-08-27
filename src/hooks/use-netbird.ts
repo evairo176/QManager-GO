@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
+import { useLiveInterval } from "@/components/realtime-provider";
 
 // =============================================================================
 // useNetBird — NetBird VPN status + actions
@@ -90,6 +91,8 @@ export function useNetBird(): UseNetBirdReturn {
     status: "idle",
   });
 
+  const liveInterval = useLiveInterval(POLL_INTERVAL_MS);
+
   const mountedRef = useRef(true);
   const installPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -116,7 +119,7 @@ export function useNetBird(): UseNetBirdReturn {
       }
       return json as NetBirdStatus;
     },
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: liveInterval,
   });
 
   const status = query.data ?? null;

@@ -58,6 +58,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/cgi-bin/quecmanager/system/reboot.sh", s.HandleSystemReboot)
 	mux.HandleFunc("/cgi-bin/quecmanager/system/logs.sh", s.HandleSystemLogs)
 	mux.HandleFunc("/cgi-bin/quecmanager/system/ipa_offload.sh", s.HandleIPAOffload)
+	mux.HandleFunc("/cgi-bin/quecmanager/system/realtime.sh", s.HandleRealtime)
 	mux.HandleFunc("/cgi-bin/quecmanager/public/overview.sh", s.HandlePublicOverview)
 
 	// APN & MBN Management Routes
@@ -328,10 +329,28 @@ func (s *Server) HandleAboutDevice(w http.ResponseWriter, r *http.Request) {
 // HandleSystemSettings manages system settings
 func (s *Server) HandleSystemSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	hostname, _ := os.Hostname()
+
+	// Prefer user-set name from qmanager.conf [settings].hostname (kernel
+	// hostname is the SoC name "sdxprairie" — wrong for the sidebar display name).
+	cfg := qmReadConfig()
+	hostname := qmStr(cfg["settings"]["hostname"])
+	if hostname == "" {
+		hostname, _ = os.Hostname()
+	}
 	if hostname == "" {
 		hostname = "qmanager-host"
 	}
+
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+			if n, ok := body["hostname"].(string); ok && strings.TrimSpace(n) != "" {
+				hostname = strings.TrimSpace(n)
+				_ = qmWriteSection("settings", map[string]any{"hostname": hostname})
+			}
+		}
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"settings": map[string]interface{}{

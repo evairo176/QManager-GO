@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
+import { useLiveInterval } from "@/components/realtime-provider";
 import type { ProfileApplyState, ApplyStatus } from "@/types/sim-profile";
 
 // =============================================================================
@@ -43,6 +44,8 @@ export function useProfileApply(): UseProfileApplyReturn {
   const [error, setError] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
 
+  const liveInterval = useLiveInterval(POLL_INTERVAL_MS);
+
   const mountedRef = useRef(true);
 
   // Idle-race guard: between apply.sh returning success (worker PID is live) and
@@ -77,7 +80,7 @@ export function useProfileApply(): UseProfileApplyReturn {
       return resp.json();
     },
     enabled: polling,
-    refetchInterval: polling ? POLL_INTERVAL_MS : false,
+    refetchInterval: polling ? liveInterval : false,
   });
 
   // Drive applyState from each polled status, honoring the idle-race guard.

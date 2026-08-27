@@ -30,6 +30,7 @@ import { NavMain } from "@/components/nav-main";
 import { NavLocalNetwork } from "@/components/nav-localNetwork";
 import { NavSecondary } from "@/components/nav-secondary";
 import { NavUser } from "@/components/nav-user";
+import { RealtimeToggle } from "@/components/realtime-toggle";
 import { NavMonitoring } from "@/components/nav-monitoring";
 import { NavCellular } from "@/components/nav-cellular";
 import { NavSystem } from "@/components/nav-system";
@@ -222,6 +223,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavSecondary items={navSecondaryItems} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
+        <RealtimeToggle />
         <NavUser user={data.user} />
       </SidebarFooter>
       <DonateDialog open={donateOpen} onOpenChange={setDonateOpen} />

@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
+import { useLiveInterval } from "@/components/realtime-provider";
 import type { ProfileSummary, ProfileListResponse } from "@/types/sim-profile";
 import {
   resolveScheduledScenario,
@@ -36,6 +37,8 @@ export interface UseActiveProfileReturn {
 export function useActiveProfile(): UseActiveProfileReturn {
   const queryClient = useQueryClient();
 
+  const liveInterval = useLiveInterval(POLL_INTERVAL_MS);
+
   const query = useQuery<ProfileSummary | null>({
     queryKey: QUERY_KEY,
     queryFn: async () => {
@@ -57,7 +60,7 @@ export function useActiveProfile(): UseActiveProfileReturn {
 
       return active;
     },
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: liveInterval,
   });
 
   // Minute tick to advance the scheduled-scenario resolution at block edges.

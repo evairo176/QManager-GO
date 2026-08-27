@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
+import { useLiveInterval } from "@/components/realtime-provider";
 import type { PingProfile } from "@/types/modem-status";
 
 const CGI_ENDPOINT = "/cgi-bin/quecmanager/monitoring/watchdog.sh";
@@ -115,6 +116,8 @@ export function useWatchdogSettings(): UseWatchdogSettingsReturn {
   const { t } = useTranslation("errors");
   const [isSaving, setIsSaving] = useState(false);
 
+  const liveInterval = useLiveInterval(30_000);
+
   const query = useQuery<WatchdogGetResponse>({
     queryKey: ["watchdog-settings"],
     queryFn: async () => {
@@ -124,7 +127,7 @@ export function useWatchdogSettings(): UseWatchdogSettingsReturn {
       }
       return resp.json();
     },
-    refetchInterval: 30_000,
+    refetchInterval: liveInterval,
   });
 
   const json = query.data;

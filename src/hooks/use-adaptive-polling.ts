@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
+import { useLiveInterval } from "@/components/realtime-provider";
 import type { AdaptivePollingSettings, PollerTier } from "@/types/modem-status";
 
 // =============================================================================
@@ -42,6 +43,8 @@ export interface UseAdaptivePollingReturn {
 }
 
 export function useAdaptivePolling(): UseAdaptivePollingReturn {
+  const liveInterval = useLiveInterval(TIER_REFRESH_MS);
+
   const query = useQuery<AdaptivePollingGetResponse>({
     queryKey: ["adaptive-polling"],
     queryFn: async () => {
@@ -55,7 +58,7 @@ export function useAdaptivePolling(): UseAdaptivePollingReturn {
       }
       return json;
     },
-    refetchInterval: TIER_REFRESH_MS,
+    refetchInterval: liveInterval,
   });
 
   const saveMutation = useMutation({

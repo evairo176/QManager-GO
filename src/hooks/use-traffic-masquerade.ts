@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
+import { useLiveInterval } from "@/components/realtime-provider";
 import type {
   MasqueradeTestResult,
   TrafficMasqueradeResponse,
@@ -21,6 +22,8 @@ export function useTrafficMasquerade() {
     status: "idle",
   });
 
+  const liveInterval = useLiveInterval(1000);
+
   const query = useQuery<TrafficMasqueradeResponse>({
     queryKey: ["traffic-masquerade"],
     queryFn: async () => {
@@ -31,7 +34,7 @@ export function useTrafficMasquerade() {
     // Poll for live stats while service is running
     refetchInterval: (q) =>
       (q.state.data as TrafficMasqueradeResponse | undefined)?.status === "running"
-        ? 1000
+        ? liveInterval
         : false,
   });
 

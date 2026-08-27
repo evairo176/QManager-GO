@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
+import { useLiveInterval } from "@/components/realtime-provider";
 import type {
   SpeedtestCheckResponse,
   SpeedtestStartResponse,
@@ -80,6 +81,8 @@ export function useSpeedtest(): UseSpeedtestReturn {
 
   const mountedRef = useRef(true);
 
+  const liveInterval = useLiveInterval(POLL_INTERVAL_MS);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -148,7 +151,7 @@ export function useSpeedtest(): UseSpeedtestReturn {
       return resp.json();
     },
     enabled: pollingEnabled,
-    refetchInterval: pollingEnabled ? POLL_INTERVAL_MS : false,
+    refetchInterval: pollingEnabled ? liveInterval : false,
   });
 
   // Drive phase/progress/result state from each polled status.

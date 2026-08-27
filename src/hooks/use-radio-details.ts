@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
+import { useLiveInterval } from "@/components/realtime-provider";
 import type {
   RadioDetails,
   RadioDetailsResponse,
@@ -84,6 +85,8 @@ export function useRadioDetails(
 ): UseRadioDetailsReturn {
   const { pollInterval = DEFAULT_POLL_INTERVAL, enabled = true } = options;
 
+  const liveInterval = useLiveInterval(pollInterval);
+
   const query = useQuery<RadioDetailsQueryData>({
     queryKey: ["radio-details"],
     queryFn: async () => {
@@ -108,7 +111,7 @@ export function useRadioDetails(
         stale: Boolean(json.stale),
       };
     },
-    refetchInterval: enabled ? pollInterval : false,
+    refetchInterval: enabled ? liveInterval : false,
     enabled,
   });
 

@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
+import { useLiveInterval } from "@/components/realtime-provider";
 import { enterRebootFlow } from "@/lib/reboot";
 
 // =============================================================================
@@ -98,6 +99,8 @@ export function useSoftwareUpdate(): UseSoftwareUpdateReturn {
   const installStallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastStatusSignatureRef = useRef<string>("");
 
+  const liveInterval = useLiveInterval(POLL_INTERVAL);
+
   const clearInstallStallTimer = useCallback(() => {
     if (installStallTimerRef.current) {
       clearTimeout(installStallTimerRef.current);
@@ -187,7 +190,7 @@ export function useSoftwareUpdate(): UseSoftwareUpdateReturn {
       return resp.json();
     },
     enabled: statusPolling,
-    refetchInterval: statusPolling ? POLL_INTERVAL : false,
+    refetchInterval: statusPolling ? liveInterval : false,
   });
 
   // Drive status state from each poll

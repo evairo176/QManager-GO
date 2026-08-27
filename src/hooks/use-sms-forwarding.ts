@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
+import { useLiveInterval } from "@/components/realtime-provider";
 
 // =============================================================================
 // useSmsForwarding — Fetch & Save Hook for SMS Forwarding
@@ -66,6 +67,8 @@ export function useSmsForwarding(): UseSmsForwardingReturn {
   const { t } = useTranslation("errors");
   const queryClient = useQueryClient();
 
+  const liveInterval = useLiveInterval(FAILURE_POLL_MS);
+
   const dataKey = ["sms-forwarding"] as const;
 
   // ---------------------------------------------------------------------------
@@ -109,7 +112,7 @@ export function useSmsForwarding(): UseSmsForwardingReturn {
     // Quiet background poll so a background failure surfaces without a manual
     // refresh. TanStack keeps prior data during the refetch, so the poll can
     // never clobber a working view with a loading/error state.
-    refetchInterval: FAILURE_POLL_MS,
+    refetchInterval: liveInterval,
   });
 
   const data = query.data ?? null;

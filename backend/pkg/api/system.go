@@ -97,6 +97,39 @@ func (s *Server) HandleIPAOffload(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleRealtime manages the global live-data master switch.
+// Frontend contract (realtime-provider.tsx):
+//   GET  → { success, enabled }
+//   POST {"enabled": bool} → { success, enabled }
+// Persisted in qmanager.conf [settings].realtime so it survives reloads.
+func (s *Server) HandleRealtime(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	enabled := true
+	if cfg := qmReadConfig(); cfg["settings"] != nil {
+		if v, ok := cfg["settings"]["realtime"].(bool); ok {
+			enabled = v
+		} else if v, ok := cfg["settings"]["realtime"].(float64); ok {
+			enabled = v != 0
+		}
+	}
+
+	if r.Method == http.MethodPost {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+			if v, ok := body["enabled"].(bool); ok {
+				enabled = v
+				_ = qmWriteSection("settings", map[string]any{"realtime": enabled})
+			}
+		}
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"enabled": enabled,
+	})
+}
+
 // HandleSystemLogs returns parsed system log entries + stats.
 // Frontend contract (system-logs-card.tsx):
 //   { success, entries: [{timestamp,level,component,pid,message}], total,

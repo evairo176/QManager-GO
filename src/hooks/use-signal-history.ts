@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
+import { useLiveInterval } from "@/components/realtime-provider";
 import type { SignalHistoryEntry } from "@/types/modem-status";
 
 // =============================================================================
@@ -103,6 +104,8 @@ export function useSignalHistory(
 ): UseSignalHistoryReturn {
   const { pollInterval = DEFAULT_POLL_INTERVAL, enabled = true } = options;
 
+  const liveInterval = useLiveInterval(pollInterval);
+
   const query = useQuery<SignalHistoryEntry[]>({
     queryKey: ["signal-history"],
     queryFn: async () => {
@@ -112,7 +115,7 @@ export function useSignalHistory(
       }
       return response.json();
     },
-    refetchInterval: enabled ? pollInterval : false,
+    refetchInterval: enabled ? liveInterval : false,
     enabled,
   });
 

@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
+import { useLiveInterval } from "@/components/realtime-provider";
 import type { NetworkEvent } from "@/types/modem-status";
 
 // =============================================================================
@@ -52,6 +53,8 @@ export function useRecentActivities(
     maxEvents = 20,
   } = options;
 
+  const liveInterval = useLiveInterval(pollInterval);
+
   const query = useQuery<NetworkEvent[]>({
     queryKey: ["recent-activities"],
     queryFn: async () => {
@@ -63,7 +66,7 @@ export function useRecentActivities(
       // Events come oldest-first from the file; reverse for newest-first display
       return [...json].reverse().slice(0, maxEvents);
     },
-    refetchInterval: enabled ? pollInterval : false,
+    refetchInterval: enabled ? liveInterval : false,
     enabled,
   });
 

@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { authFetch } from "@/lib/auth-fetch";
 import { resolveErrorMessage } from "@/lib/i18n/resolve-error";
+import { useLiveInterval } from "@/components/realtime-provider";
 import type {
   VideoOptimizerResponse,
   VideoOptimizerSettings,
@@ -29,6 +30,8 @@ export function useVideoOptimizer() {
   const [verifyPolling, setVerifyPolling] = useState(false);
   const [installPolling, setInstallPolling] = useState(false);
 
+  const liveInterval = useLiveInterval(1000);
+
   const query = useQuery<VideoOptimizerResponse>({
     queryKey: ["video-optimizer"],
     queryFn: async () => {
@@ -39,7 +42,7 @@ export function useVideoOptimizer() {
     // Poll for live stats while service is running
     refetchInterval: (q) =>
       (q.state.data as VideoOptimizerResponse | undefined)?.status === "running"
-        ? 1000
+        ? liveInterval
         : false,
   });
 
