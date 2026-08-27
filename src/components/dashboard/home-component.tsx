@@ -124,6 +124,7 @@ const HomeComponent = () => {
               deviceData={data?.device ?? null}
               lteData={data?.lte ?? null}
               nrData={data?.nr ?? null}
+              networkData={data?.network ?? null}
               liveLteTa={liveLteTa}
               liveNrTa={liveNrTa}
               isLoading={isLoading}

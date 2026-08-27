@@ -2,6 +2,7 @@
 
 import { useTranslation } from "react-i18next";
 import { ActivityIcon } from "lucide-react";
+import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import {
   SidebarMenu,
@@ -31,8 +32,12 @@ export function RealtimeToggle() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: checked }),
       });
+      toast.success(
+        checked ? t("realtime.toast_on") : t("realtime.toast_off"),
+        { duration: 2500 },
+      );
     } catch {
-      /* offline — local state remains */
+      toast.error(t("realtime.toast_error"), { duration: 3500 });
     }
   };
 

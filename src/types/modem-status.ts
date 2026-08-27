@@ -216,6 +216,8 @@ export interface DeviceStatus {
   cpu_usage: number;
   /** Load average "1m 5m 15m" string from /proc/loadavg (empty if unavailable) */
   load_avg?: string;
+  /** Active APN name (also available on NetworkStatus; duplicated for convenience) */
+  apn?: string;
   /** Used memory in MB */
   memory_used_mb: number;
   /** Total memory in MB */

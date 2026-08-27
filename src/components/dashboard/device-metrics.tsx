@@ -20,7 +20,12 @@ import {
   TbInfoCircleFilled,
 } from "react-icons/tb";
 
-import type { DeviceStatus, LteStatus, NrStatus } from "@/types/modem-status";
+import type {
+  DeviceStatus,
+  LteStatus,
+  NetworkStatus,
+  NrStatus,
+} from "@/types/modem-status";
 import {
   formatBitsPerSec,
   formatUptime,
@@ -38,6 +43,8 @@ interface DeviceMetricsComponentProps {
   deviceData: DeviceStatus | null;
   lteData: LteStatus | null;
   nrData: NrStatus | null;
+  /** Network-level info (WAN IP, APN, DNS) — used for the connection info rows. */
+  networkData: NetworkStatus | null;
   /**
    * Live LTE Timing Advance from the on-demand radio-details endpoint.
    * Preferred while the page is mounted; falls back to the poller's last-known
@@ -309,6 +316,7 @@ const DeviceMetricsComponent = ({
   deviceData,
   lteData,
   nrData,
+  networkData,
   liveLteTa,
   liveNrTa,
   isLoading,
@@ -598,6 +606,39 @@ const DeviceMetricsComponent = ({
             </p>
             <p className="font-semibold text-sm tabular-nums">
               {displayDevUptime > 0 ? formatUptime(displayDevUptime) : "-"}
+            </p>
+          </div>
+
+          {/* WAN IP Address */}
+          <Separator />
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-muted-foreground text-sm">
+              {t("metrics.wan_ip")}
+            </p>
+            <p className="font-semibold text-sm tabular-nums">
+              {networkData?.wan_ipv4 || "-"}
+            </p>
+          </div>
+
+          {/* Active APN */}
+          <Separator />
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-muted-foreground text-sm">
+              {t("metrics.apn")}
+            </p>
+            <p className="font-semibold text-sm tabular-nums">
+              {networkData?.apn || deviceData?.apn || "-"}
+            </p>
+          </div>
+
+          {/* SIM ICCID (last 4 digits — sensitive prefix masked) */}
+          <Separator />
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-muted-foreground text-sm">
+              {t("metrics.sim_iccid")}
+            </p>
+            <p className="font-semibold text-sm tabular-nums">
+              {deviceData?.iccid ? `•••• ${deviceData.iccid.slice(-4)}` : "-"}
             </p>
           </div>
         </div>

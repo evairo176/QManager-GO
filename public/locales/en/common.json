@@ -165,6 +165,9 @@
     "copyright": "© {{year}} QManager"
   },
   "realtime": {
-    "live_data": "Live data"
+    "live_data": "Live data",
+    "toast_on": "Live data enabled — polling resumed",
+    "toast_off": "Live data paused — polling stopped (saves CPU)",
+    "toast_error": "Could not save Live data preference"
   }
 }
