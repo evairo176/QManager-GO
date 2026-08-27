@@ -53,6 +53,7 @@ import { Switch } from "@/components/ui/switch";
 import { useTranslation } from "react-i18next";
 
 import { useRecentActivities } from "@/hooks/use-recent-activities";
+import { toast } from "sonner";
 import { EVENT_TAB_CATEGORIES } from "@/constants/network-events";
 import type { NetworkEvent, EventSeverity } from "@/types/modem-status";
 
@@ -270,7 +271,15 @@ const NetworkEventsCard = () => {
                   <Switch
                     id="event-monitoring-setting"
                     checked={monitoringEnabled}
-                    onCheckedChange={setMonitoringEnabled}
+                    onCheckedChange={(v) => {
+                      setMonitoringEnabled(v);
+                      toast.success(
+                        v
+                          ? "Event monitoring enabled"
+                          : "Event monitoring paused",
+                        { duration: 2500 },
+                      );
+                    }}
                   />
                 </Field>
               </FieldGroup>
@@ -290,7 +299,10 @@ const NetworkEventsCard = () => {
 
           <div className="flex flex-col sm:py-4">
             <div className="grid flex-1 items-start gap-4 sm:py-0 md:gap-8">
-              <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <Tabs value={activeTab} onValueChange={(v) => {
+                setActiveTab(v);
+                toast.success("Filtered events", { duration: 1500 });
+              }}>
                 <div className="flex items-center">
                   <TabsList>
                     <TabsTrigger value="all">
@@ -336,19 +348,28 @@ const NetworkEventsCard = () => {
                         <DropdownMenuSeparator />
                         <DropdownMenuCheckboxItem
                           checked={sortOrder === "newest"}
-                          onCheckedChange={() => setSortOrder("newest")}
+                          onCheckedChange={() => {
+                            setSortOrder("newest");
+                            toast.success("Sorted newest first", { duration: 1500 });
+                          }}
                         >
                           {t("network_events.sort_newest")}
                         </DropdownMenuCheckboxItem>
                         <DropdownMenuCheckboxItem
                           checked={sortOrder === "oldest"}
-                          onCheckedChange={() => setSortOrder("oldest")}
+                          onCheckedChange={() => {
+                            setSortOrder("oldest");
+                            toast.success("Sorted oldest first", { duration: 1500 });
+                          }}
                         >
                           {t("network_events.sort_oldest")}
                         </DropdownMenuCheckboxItem>
                         <DropdownMenuCheckboxItem
                           checked={sortOrder === "type"}
-                          onCheckedChange={() => setSortOrder("type")}
+                          onCheckedChange={() => {
+                            setSortOrder("type");
+                            toast.success("Sorted by type", { duration: 1500 });
+                          }}
                         >
                           {t("network_events.sort_type")}
                         </DropdownMenuCheckboxItem>
@@ -376,7 +397,13 @@ const NetworkEventsCard = () => {
                           <DropdownMenuCheckboxItem
                             key={opt.value}
                             checked={maxEvents === opt.value}
-                            onCheckedChange={() => setMaxEvents(opt.value)}
+                            onCheckedChange={() => {
+                              setMaxEvents(opt.value);
+                              toast.success(
+                                `Showing up to ${opt.value} events`,
+                                { duration: 1500 },
+                              );
+                            }}
                           >
                             {opt.label}
                           </DropdownMenuCheckboxItem>
@@ -387,7 +414,10 @@ const NetworkEventsCard = () => {
                       size="sm"
                       variant="outline"
                       className="h-7 gap-1"
-                      onClick={refresh}
+                      onClick={() => {
+                        refresh();
+                        toast.success("Events refreshed", { duration: 2500 });
+                      }}
                       disabled={isRefreshing || !monitoringEnabled}
                     >
                       <RefreshCw

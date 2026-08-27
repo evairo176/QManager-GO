@@ -19,6 +19,7 @@ import {
   InputGroupText,
 } from "@/components/ui/input-group";
 import { authFetch } from "@/lib/auth-fetch";
+import { toast } from "sonner";
 import CommandsPopover from "@/components/system-settings/at-terminal/commands-popover";
 import SignalStormGame from "@/components/system-settings/at-terminal/signal-storm-game";
 
@@ -174,12 +175,17 @@ export default function ATTerminalCard() {
             response: json.response ?? "",
             status: "success",
           });
+          toast.success("AT command sent", { duration: 2500 });
         } else {
           appendEntry({
             command,
             response: json.detail ?? json.error ?? t("at_terminal.response_command_failed"),
             status: "error",
           });
+          toast.error(
+            json.detail ?? json.error ?? t("at_terminal.response_command_failed"),
+            { duration: 3500 },
+          );
         }
       } catch (err) {
         appendEntry({
@@ -190,6 +196,12 @@ export default function ATTerminalCard() {
               : t("at_terminal.response_unexpected_error"),
           status: "error",
         });
+        toast.error(
+          err instanceof TypeError
+            ? t("at_terminal.response_network_error")
+            : t("at_terminal.response_unexpected_error"),
+          { duration: 3500 },
+        );
       } finally {
         setIsLoading(false);
         setInput("");
@@ -227,6 +239,10 @@ export default function ATTerminalCard() {
           });
           setInput("");
           setLastCommand(trimmed);
+          toast.error(
+            t(`blocked.${rule.messageKey}`, { ns: "at-commands" }),
+            { duration: 3500 },
+          );
           return;
         }
       }
@@ -267,6 +283,7 @@ export default function ATTerminalCard() {
     localStorage.removeItem(STORAGE_KEY);
     setWarning(null);
     inputRef.current?.focus();
+    toast.success("Terminal history cleared", { duration: 2500 });
   }, []);
 
   const handleExport = useCallback(() => {
@@ -279,6 +296,7 @@ export default function ATTerminalCard() {
     a.download = `at-terminal-export-${date}.txt`;
     a.click();
     URL.revokeObjectURL(url);
+    toast.success("History exported", { duration: 2500 });
   }, [history]);
 
   const handleKeyDown = useCallback(

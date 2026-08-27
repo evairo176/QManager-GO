@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { DEFAULT_AT_COMMANDS, type ATCommandPreset } from "@/constants/at-commands";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -89,11 +90,13 @@ export default function CommandsPopover({
 
     if (!trimmedLabel || !trimmedCommand) {
       setAddError(t("at_terminal.validate_fields_required"));
+      toast.error(t("at_terminal.validate_fields_required"), { duration: 3500 });
       return;
     }
 
     if (!trimmedCommand.toUpperCase().startsWith("AT")) {
       setAddError(t("at_terminal.validate_must_start_at"));
+      toast.error(t("at_terminal.validate_must_start_at"), { duration: 3500 });
       return;
     }
 
@@ -103,6 +106,7 @@ export default function CommandsPopover({
     );
     if (isDuplicateCommand) {
       setAddError(t("at_terminal.validate_command_duplicate"));
+      toast.error(t("at_terminal.validate_command_duplicate"), { duration: 3500 });
       return;
     }
     const isDuplicateLabel = allCommands.some(
@@ -110,6 +114,7 @@ export default function CommandsPopover({
     );
     if (isDuplicateLabel) {
       setAddError(t("at_terminal.validate_label_duplicate"));
+      toast.error(t("at_terminal.validate_label_duplicate"), { duration: 3500 });
       return;
     }
 
@@ -122,12 +127,14 @@ export default function CommandsPopover({
     setNewLabel("");
     setNewCommand("");
     setAddError("");
+    toast.success("Custom command added", { duration: 2500 });
   }
 
   function handleDelete(index: number) {
     const updated = customCommands.filter((_, i) => i !== index);
     setCustomCommands(updated);
     saveCustomCommands(updated);
+    toast.success("Custom command deleted", { duration: 2500 });
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -161,6 +168,12 @@ export default function CommandsPopover({
                         onSelect(preset.command);
                         setOpen(false);
                         inputRef.current?.focus();
+                        toast.success(
+                          t("at_terminal.popover_command_selected", {
+                            defaultValue: "Command loaded",
+                          }),
+                          { duration: 1500 },
+                        );
                       }}
                     >
                       <span className="font-medium flex-1 min-w-0 truncate">
@@ -184,6 +197,12 @@ export default function CommandsPopover({
                         onSelect(preset.command);
                         setOpen(false);
                         inputRef.current?.focus();
+                        toast.success(
+                          t("at_terminal.popover_command_selected", {
+                            defaultValue: "Command loaded",
+                          }),
+                          { duration: 1500 },
+                        );
                       }}
                     >
                       <span className="font-medium flex-1 min-w-0 truncate">

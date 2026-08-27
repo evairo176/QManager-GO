@@ -12,6 +12,7 @@ import {
 import { EVENT_META, CHANNEL_META } from "./constants";
 import { InfoTip } from "./info-tip";
 import type { AlertsForm } from "./use-alerts-form";
+import { toast } from "sonner";
 
 // -----------------------------------------------------------------------------
 // AlertRoutingGrid — the trigger × channel matrix.
@@ -108,7 +109,15 @@ export function AlertRoutingGrid({
                         <span className="inline-flex items-center justify-center">
                           <Switch
                             checked={form.getRoute(ev, ch)}
-                            onCheckedChange={(v) => form.setRoute(ev, ch, v)}
+                            onCheckedChange={(v) => {
+                              form.setRoute(ev, ch, v);
+                              toast.success(
+                                v
+                                  ? "Alert route enabled"
+                                  : "Alert route disabled",
+                                { duration: 2500 },
+                              );
+                            }}
                             disabled={masterOff}
                             aria-label={t("alerts.routing_switch_aria", {
                               event: t(`alerts.event_${EVENT_META[ev].key}_name`),

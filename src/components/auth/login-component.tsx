@@ -10,7 +10,7 @@ import {
   XCircleIcon,
 } from "lucide-react";
 
-import { useLogin } from "@/hooks/use-auth";
+import { isLoggedIn, useLogin } from "@/hooks/use-auth";
 import { LoginDeviceName } from "@/components/auth/login-device-name";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -74,6 +74,17 @@ export default function LoginComponent() {
       window.location.href = "/setup/";
     }
   }, [status]);
+
+  // Already signed in? Bounce to the dashboard instead of showing the login
+  // form. This is the static-export equivalent of a route middleware guard
+  // (output: "export" can't run an edge middleware). Uses the optimistic
+  // indicator cookie; if the backend session has actually expired, the
+  // dashboard's own auth check will bounce back here and clear the cookie.
+  useEffect(() => {
+    if (isLoggedIn()) {
+      window.location.href = "/dashboard/";
+    }
+  }, []);
 
   // Rate-limit countdown timer drives the button label ("Locked (Ns)").
   useEffect(() => {

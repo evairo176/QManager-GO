@@ -49,7 +49,9 @@
     "iccid": "ICCID",
     "device_imei": "Device IMEI",
     "active_mimo": "Active MIMO",
-    "qmanager_version": "QManager Version"
+    "qmanager_version": "QManager Version",
+    "toast_show_private": "Sensitive details shown",
+    "toast_hide_private": "Sensitive details hidden"
   },
   "metrics": {
     "title": "Device Metrics",
@@ -127,6 +129,9 @@
   },
   "speedtest": {
     "section_label": "Speed Test",
+    "toast_start": "Speed test started",
+    "toast_complete": "Speed test finished",
+    "toast_error": "Speed test failed",
     "start_button_aria": "Start speed test",
     "idle_description": "Start a speed test to measure your current network speed.",
     "dialog_idle_description": "Measure your current download speed, upload speed, and latency.",

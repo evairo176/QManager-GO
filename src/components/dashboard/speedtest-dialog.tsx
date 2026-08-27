@@ -2,6 +2,7 @@
 
 import React, { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -314,6 +315,22 @@ export function SpeedtestDialog({ open, onOpenChange }: SpeedtestDialogProps) {
     setSelectedServer,
   } = useSpeedtest();
 
+  // Toast feedback for start / completion / error. The dialog already shows
+  // a progress phase, but the global toast keeps the user informed even when
+  // they've switched tabs or the dialog is behind other UI.
+  useEffect(() => {
+    if (phase === "complete") {
+      toast.success(t("speedtest.toast_complete"));
+    } else if (phase === "error") {
+      toast.error(error || t("speedtest.toast_error"));
+    }
+  }, [phase, error, t]);
+
+  const handleStart = () => {
+    toast.info(t("speedtest.toast_start"));
+    start();
+  };
+
   // On dialog open: check status and fetch nearby servers
   useEffect(() => {
     if (open) {
@@ -412,7 +429,7 @@ export function SpeedtestDialog({ open, onOpenChange }: SpeedtestDialogProps) {
                 )}
               </div>
 
-              <Button onClick={start} disabled={!isAvailable} className="gap-2">
+              <Button onClick={handleStart} disabled={!isAvailable} className="gap-2">
                 <Play className="size-4" />
                 {t("speedtest.run_button")}
               </Button>
@@ -501,7 +518,7 @@ export function SpeedtestDialog({ open, onOpenChange }: SpeedtestDialogProps) {
             <div className="space-y-4">
               <ResultDisplay result={result} />
               <div className="flex justify-center pt-2">
-                <Button onClick={start}>
+                <Button onClick={handleStart}>
                   <Play className="h-3.5 w-3.5" />
                   {t("speedtest.run_again_button")}
                 </Button>

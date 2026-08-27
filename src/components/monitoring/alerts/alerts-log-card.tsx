@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { useAlertsLog } from "@/hooks/use-alerts-log";
 import type { AlertLogEntry, RebootHistoryEntry } from "@/types/alerts";
 import { CHANNEL_META, REBOOT_CAUSE_META, REBOOT_TONE_BADGE } from "./constants";
+import { toast } from "sonner";
 
 const MotionTableRow = motion.create(TableRow);
 
@@ -123,7 +124,10 @@ export function AlertsLogCard({
           size="icon"
           aria-label={t("alerts.log_aria_refresh")}
           disabled={isRefreshing}
-          onClick={refresh}
+          onClick={() => {
+            refresh();
+            toast.success("Alert log refreshed", { duration: 2500 });
+          }}
         >
           <RefreshCcwIcon className={cn("size-4", isRefreshing && "animate-spin")} />
         </Button>
@@ -176,7 +180,10 @@ export function AlertsLogCard({
                 variant="outline"
                 size="sm"
                 className="mt-2"
-                onClick={refresh}
+                onClick={() => {
+                  refresh();
+                  toast.success("Alert log refreshed", { duration: 2500 });
+                }}
               >
                 <RefreshCcwIcon className="size-3.5" />
                 {t("actions.retry", { ns: "common" })}

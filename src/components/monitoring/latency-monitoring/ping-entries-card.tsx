@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { ArrowUpDown } from "lucide-react";
+import { toast } from "sonner";
 
 // =============================================================================
 // Types
@@ -88,13 +89,19 @@ const PingEntriesCard = ({
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem
                 checked={sortOrder === "newest"}
-                onCheckedChange={() => setSortOrder("newest")}
+                onCheckedChange={() => {
+                  setSortOrder("newest");
+                  toast.success("Sorted newest first", { duration: 1500 });
+                }}
               >
                 {t("latency.entries_sort_newest")}
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={sortOrder === "oldest"}
-                onCheckedChange={() => setSortOrder("oldest")}
+                onCheckedChange={() => {
+                  setSortOrder("oldest");
+                  toast.success("Sorted oldest first", { duration: 1500 });
+                }}
               >
                 {t("latency.entries_sort_oldest")}
               </DropdownMenuCheckboxItem>

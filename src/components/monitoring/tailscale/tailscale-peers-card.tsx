@@ -28,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { RefreshCcwIcon, UsersIcon, ShieldIcon, AlertCircle, CheckCircle2Icon, MinusCircleIcon } from "lucide-react";
 import type { TailscaleStatus, TailscalePeer } from "@/hooks/use-tailscale";
+import { toast } from "sonner";
 
 // =============================================================================
 // TailscalePeersCard — Peer list table for Tailscale network
@@ -139,7 +140,14 @@ export function TailscalePeersCard({
               {t("tailscale.peers_error_load")}
             </p>
             {refresh && (
-              <Button variant="outline" size="sm" onClick={refresh}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  refresh();
+                  toast.success("Peers refreshed", { duration: 2500 });
+                }}
+              >
                 <RefreshCcwIcon className="size-3.5" />
                 {t("actions.retry", { ns: "common" })}
               </Button>

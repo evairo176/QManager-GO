@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { useAboutDevice } from "@/hooks/use-about-device";
 import DeviceInformationCard from "./device-information-card";
 import AboutQManagerCard from "./about-qmanager-card";
@@ -8,6 +9,11 @@ import AboutQManagerCard from "./about-qmanager-card";
 const AboutDeviceComponent = () => {
   const { t } = useTranslation("system-settings");
   const { data, isLoading, error, refresh } = useAboutDevice();
+
+  const handleRetry = () => {
+    refresh();
+    toast.info(t("about_device.device_info.error.retrying"));
+  };
 
   return (
     <div className="@container/main mx-auto p-2">
@@ -22,7 +28,7 @@ const AboutDeviceComponent = () => {
           data={data}
           isLoading={isLoading}
           error={error}
-          onRetry={refresh}
+          onRetry={handleRetry}
         />
         <AboutQManagerCard data={data} isLoading={isLoading} />
       </div>

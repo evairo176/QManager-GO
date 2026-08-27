@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, type KeyboardEvent } from "react";
+import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import {
   Card,
@@ -236,6 +237,9 @@ const FrequencyCalculator = () => {
       if (calculationResult && !("errorKey" in calculationResult)) {
         setResult(calculationResult);
         setError("");
+        toast.success(
+          t("cell_scanner.frequency_calculator.calculator.toast_calculated"),
+        );
 
         const historyEntry: HistoryEntry = {
           ...calculationResult,
@@ -274,6 +278,9 @@ const FrequencyCalculator = () => {
 
   const clearHistory = (): void => {
     setHistory([]);
+    toast.success(
+      t("cell_scanner.frequency_calculator.calculator.toast_history_cleared"),
+    );
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {

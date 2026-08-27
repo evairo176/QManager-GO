@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2Icon } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
 export interface RestorePasswordDialogProps {
   open: boolean;
@@ -32,6 +33,13 @@ export function RestorePasswordDialog({
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // Mirror of the `incorrect` prop so the submit handler can read the latest
+  // outcome after the parent has committed it (props update asynchronously).
+  const incorrectRef = useRef(incorrect);
+  useEffect(() => {
+    incorrectRef.current = incorrect;
+  }, [incorrect]);
+
   useEffect(() => {
     if (!open) {
       setPw("");
@@ -39,11 +47,25 @@ export function RestorePasswordDialog({
     }
   }, [open]);
 
+  // Backend rejected the passphrase while the dialog is open.
+  useEffect(() => {
+    if (open && incorrect) {
+      toast.error("Incorrect restore password", { duration: 3500 });
+    }
+  }, [open, incorrect]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     try {
       await onSubmit(pw);
+      // Defer until React has committed the outcome: on success the parent
+      // closes this dialog, on failure it stays open with `incorrect` set.
+      requestAnimationFrame(() => {
+        if (!incorrectRef.current) {
+          toast.success("Restore password verified", { duration: 2500 });
+        }
+      });
     } finally {
       setBusy(false);
     }

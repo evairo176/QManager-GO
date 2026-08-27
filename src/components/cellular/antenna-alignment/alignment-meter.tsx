@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import {
   CheckCircle2Icon,
@@ -553,7 +554,10 @@ export default function AlignmentMeterSection({
             <Button
               variant="outline"
               size="sm"
-              onClick={resetAll}
+              onClick={() => {
+                resetAll();
+                toast.success(t("antennas.alignment.meter.toast_reset"));
+              }}
               className="h-7 gap-1 text-xs"
               disabled={activeSlot !== null}
             >

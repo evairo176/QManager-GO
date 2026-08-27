@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TriangleAlertIcon } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
+import { toast } from "sonner";
 import {
   usePendingReboot,
   clearPendingReboot,
@@ -43,15 +44,18 @@ const ConfigurationBackupComponent = () => {
         throw new Error(`reboot_failed: HTTP ${res.status}`);
       }
       enterRebootFlow("config_restore");
+      toast.success("Reboot started", { duration: 2500 });
     } catch {
       requestRebootLater("config_restore");
       setRebootBusy(false);
+      toast.error("Reboot failed — will reboot later", { duration: 3500 });
     }
   };
 
   const handleConfirmDismiss = () => {
     clearPendingReboot();
     setDismissDialogOpen(false);
+    toast.success("Pending reboot dismissed", { duration: 2500 });
   };
 
   return (

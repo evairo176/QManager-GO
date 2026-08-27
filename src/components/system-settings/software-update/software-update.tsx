@@ -29,6 +29,7 @@ import {
 
 import { useSoftwareUpdate } from "@/hooks/use-software-update";
 import type { UpdateStatus } from "@/hooks/use-software-update";
+import { toast } from "sonner";
 import { UpdateStatusCard } from "./update-status-card";
 import { UpdatePreferencesCard } from "./update-preferences-card";
 
@@ -126,6 +127,29 @@ const SoftwareUpdateComponent = () => {
 
   const progressListAria = t("software_update.progress_list_aria");
 
+  // Wrapped action handlers that surface a success toast once the underlying
+  // request finishes. Failures are already surfaced by the hook's error state
+  // and the child cards' error toasts.
+  const handleCheckForUpdates = async () => {
+    await hookData.checkForUpdates();
+    toast.success("Update check complete", { duration: 2500 });
+  };
+
+  const handleDownloadUpdate = async (version?: string) => {
+    await hookData.downloadUpdate(version);
+    toast.success("Update download started", { duration: 2500 });
+  };
+
+  const handleInstallStaged = async () => {
+    await hookData.installStaged();
+    toast.success("Update install started", { duration: 2500 });
+  };
+
+  const handleRebootDevice = async () => {
+    await hookData.rebootDevice();
+    toast.success("Reboot requested", { duration: 2500 });
+  };
+
   const steps = useMemo<StepConfig[]>(
     () => [
       {
@@ -180,7 +204,7 @@ const SoftwareUpdateComponent = () => {
             <div className="mt-4 flex justify-end">
               <Button
                 variant="outline"
-                onClick={hookData.checkForUpdates}
+                onClick={handleCheckForUpdates}
                 disabled={isChecking}
               >
                 {isChecking ? (
@@ -321,7 +345,7 @@ const SoftwareUpdateComponent = () => {
                     <p className="mb-3">
                       {t("software_update.updating_stall_description")}
                     </p>
-                    <Button size="sm" onClick={hookData.rebootDevice}>
+                    <Button size="sm" onClick={handleRebootDevice}>
                       {t("software_update.updating_reboot_device_now")}
                     </Button>
                   </AlertDescription>
@@ -348,9 +372,9 @@ const SoftwareUpdateComponent = () => {
           isDownloading={isDownloading}
           error={error}
           lastChecked={hookData.lastChecked}
-          checkForUpdates={hookData.checkForUpdates}
-          downloadUpdate={hookData.downloadUpdate}
-          installStaged={hookData.installStaged}
+          checkForUpdates={handleCheckForUpdates}
+          downloadUpdate={handleDownloadUpdate}
+          installStaged={handleInstallStaged}
         />
         <UpdatePreferencesCard
           updateInfo={updateInfo}

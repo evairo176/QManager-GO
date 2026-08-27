@@ -49,6 +49,7 @@ import { TbInfoCircleFilled } from "react-icons/tb";
 import { cn } from "@/lib/utils";
 import { PING_PROFILES } from "@/types/modem-status";
 import type { WatchdogQualityThresholds } from "@/hooks/use-watchdog-settings";
+import { toast } from "sonner";
 import { PROFILE_INTERVAL_SEC, type WatchdogForm } from "./use-watchdog-form";
 
 const QUALITY_SETTINGS_HREF = "/system-settings/connection-quality";
@@ -157,6 +158,9 @@ export function WatchdogSettingsCard({
         setTab(first.tab);
         setFocusReq((prev) => ({ id: first.id, n: (prev?.n ?? 0) + 1 }));
       }
+      toast.error("Check the highlighted settings and fix the errors", {
+        duration: 3500,
+      });
       return;
     }
     void form.submit();
@@ -180,7 +184,10 @@ export function WatchdogSettingsCard({
       <CardContent className="flex min-h-0 flex-1 flex-col">
         <Tabs
           value={tab}
-          onValueChange={(v) => setTab(v as SettingsTab)}
+          onValueChange={(v) => {
+            setTab(v as SettingsTab);
+            toast.success("Switched settings tab", { duration: 1500 });
+          }}
           className="min-h-0 flex-1"
         >
           <TabsList className="w-full">
@@ -410,7 +417,15 @@ export function WatchdogSettingsCard({
                     <Switch
                       id="quality-enabled"
                       checked={qualityOn}
-                      onCheckedChange={form.setQualityEnabled}
+                      onCheckedChange={(v) => {
+                        form.setQualityEnabled(v);
+                        toast.success(
+                          v
+                            ? "Quality recovery enabled"
+                            : "Quality recovery disabled",
+                          { duration: 2500 },
+                        );
+                      }}
                       disabled={masterOff}
                       aria-label={t("watchdog.quality_enable_label")}
                     />
@@ -527,7 +542,15 @@ export function WatchdogSettingsCard({
                 <Switch
                   id="ssr-aware"
                   checked={form.ssrAware}
-                  onCheckedChange={form.setSsrAware}
+                  onCheckedChange={(v) => {
+                    form.setSsrAware(v);
+                    toast.success(
+                      v
+                        ? "SSR-aware hold enabled"
+                        : "SSR-aware hold disabled",
+                      { duration: 2500 },
+                    );
+                  }}
                   disabled={masterOff}
                   aria-label={t("watchdog.ssr_aware_label")}
                 />
@@ -577,7 +600,13 @@ export function WatchdogSettingsCard({
                 description={t("watchdog.tier_1_description")}
                 atCommand="AT+COPS=2 → AT+COPS=0"
                 enabled={form.tier1Enabled}
-                onToggle={form.setTier1Enabled}
+                onToggle={(v) => {
+                  form.setTier1Enabled(v);
+                  toast.success(
+                    v ? "Tier 1 (re-registration) enabled" : "Tier 1 (re-registration) disabled",
+                    { duration: 2500 },
+                  );
+                }}
                 masterOff={masterOff}
               />
 
@@ -589,7 +618,13 @@ export function WatchdogSettingsCard({
                 description={t("watchdog.tier_2_description")}
                 atCommand="AT+CFUN=0 → AT+CFUN=1"
                 enabled={form.tier2Enabled}
-                onToggle={form.setTier2Enabled}
+                onToggle={(v) => {
+                  form.setTier2Enabled(v);
+                  toast.success(
+                    v ? "Tier 2 (radio toggle) enabled" : "Tier 2 (radio toggle) disabled",
+                    { duration: 2500 },
+                  );
+                }}
                 masterOff={masterOff}
                 info={t("watchdog.tier_2_tooltip")}
                 infoAria={t("watchdog.tier_2_more_info_aria")}
@@ -603,7 +638,13 @@ export function WatchdogSettingsCard({
                 description={t("watchdog.tier_3_description")}
                 atCommand="AT+QUIMSLOT=N"
                 enabled={form.tier3Enabled}
-                onToggle={form.setTier3Enabled}
+                onToggle={(v) => {
+                  form.setTier3Enabled(v);
+                  toast.success(
+                    v ? "Tier 3 (SIM failover) enabled" : "Tier 3 (SIM failover) disabled",
+                    { duration: 2500 },
+                  );
+                }}
                 masterOff={masterOff}
               >
                 {form.tier3Enabled && (
@@ -672,7 +713,15 @@ export function WatchdogSettingsCard({
                         <Switch
                           id="primary-recheck"
                           checked={form.primaryRecheckEnabled}
-                          onCheckedChange={form.setPrimaryRecheckEnabled}
+                          onCheckedChange={(v) => {
+                            form.setPrimaryRecheckEnabled(v);
+                            toast.success(
+                              v
+                                ? "Auto fail-back enabled"
+                                : "Auto fail-back disabled",
+                              { duration: 2500 },
+                            );
+                          }}
                           disabled={masterOff}
                           aria-label={t("watchdog.primary_recheck_label")}
                         />
@@ -735,7 +784,13 @@ export function WatchdogSettingsCard({
                 atCommand="reboot"
                 tone="caution"
                 enabled={form.tier4Enabled}
-                onToggle={form.setTier4Enabled}
+                onToggle={(v) => {
+                  form.setTier4Enabled(v);
+                  toast.success(
+                    v ? "Tier 4 (reboot) enabled" : "Tier 4 (reboot) disabled",
+                    { duration: 2500 },
+                  );
+                }}
                 masterOff={masterOff}
                 isLast
               >
@@ -793,7 +848,10 @@ export function WatchdogSettingsCard({
               type="button"
               variant="ghost"
               size="sm"
-              onClick={form.discard}
+              onClick={() => {
+                form.discard();
+                toast.success("Changes discarded", { duration: 2500 });
+              }}
               disabled={!form.isDirty || form.isSaving}
             >
               {t("watchdog.save_discard")}

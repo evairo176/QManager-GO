@@ -38,6 +38,7 @@ import {
 import { cn } from "@/lib/utils";
 import { DUR, EASE_OUT_EXPO } from "@/lib/motion";
 import { useRecentActivities } from "@/hooks/use-recent-activities";
+import { toast } from "sonner";
 import type { NetworkEvent, EventSeverity } from "@/types/modem-status";
 
 const MotionTableRow = motion.create(TableRow);
@@ -101,7 +102,10 @@ export function WatchdogRecoveryActivityCard() {
             variant="outline"
             size="icon"
             className="size-8"
-            onClick={refresh}
+            onClick={() => {
+              refresh();
+              toast.success("Recovery activity refreshed", { duration: 2500 });
+            }}
             disabled={isRefreshing}
             aria-label={t("watchdog.activity_refresh_aria")}
           >
@@ -125,7 +129,10 @@ export function WatchdogRecoveryActivityCard() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={refresh}
+                onClick={() => {
+                  refresh();
+                  toast.success("Recovery activity refreshed", { duration: 2500 });
+                }}
                 disabled={isRefreshing}
               >
                 {t("watchdog.activity_retry")}
@@ -247,7 +254,10 @@ export function WatchdogRecoveryActivityCard() {
               variant="outline"
               size="icon"
               className="size-8 pointer-coarse:size-11"
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              onClick={() => {
+                setPage((p) => Math.max(0, p - 1));
+                toast.success("Previous page", { duration: 1500 });
+              }}
               disabled={safePage === 0}
               aria-label={t("watchdog.activity_prev_aria")}
             >
@@ -258,7 +268,10 @@ export function WatchdogRecoveryActivityCard() {
               variant="outline"
               size="icon"
               className="size-8 pointer-coarse:size-11"
-              onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+              onClick={() => {
+                setPage((p) => Math.min(pageCount - 1, p + 1));
+                toast.success("Next page", { duration: 1500 });
+              }}
               disabled={safePage >= pageCount - 1}
               aria-label={t("watchdog.activity_next_aria")}
             >

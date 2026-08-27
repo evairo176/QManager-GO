@@ -1159,7 +1159,9 @@
         "downlink_only": "Downlink Only",
         "calculation_method_prefix": "Calculation method: ",
         "calculation_method_nr": "3GPP TS 38.104 Section 5.4.2.1",
-        "calculation_method_lte": "3GPP TS 36.101 Section 5.7"
+        "calculation_method_lte": "3GPP TS 36.101 Section 5.7",
+        "toast_calculated": "Frequency calculated",
+        "toast_history_cleared": "Calculation history cleared"
       },
       "history": {
         "title": "Calculation History",
@@ -1270,7 +1272,8 @@
           "lte": "4G LTE",
           "nr": "5G SA",
           "endc": "5G NSA (EN-DC)"
-        }
+        },
+        "toast_reset": "Alignment data reset"
       }
     }
   },

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { BarChart, CartesianGrid, XAxis, Bar } from "recharts";
 import { useModemStatus } from "@/hooks/use-modem-status";
 import { useLatencyHistory } from "@/hooks/use-latency-history";
+import { toast } from "sonner";
 import type { PingHistoryEntry } from "@/types/modem-status";
 import type { PingEntry } from "./ping-entries-card";
 
@@ -318,7 +319,15 @@ const LatencyMonitoringCard = ({
               aria-label={`${t("latency.card_title")} — ${chartConfig[key].label}`}
               data-active={activeChart === key}
               className="data-[active=true]:bg-muted/50 relative z-30 flex flex-1 flex-col justify-center gap-1 border-t px-6 py-4 text-left even:border-l sm:border-t-0 sm:border-l sm:px-8 sm:py-6"
-              onClick={() => setActiveChart(key)}
+              onClick={() => {
+                setActiveChart(key);
+                toast.success(
+                  key === "latency"
+                    ? "Showing latency chart"
+                    : "Showing packet loss chart",
+                  { duration: 1500 },
+                );
+              }}
             >
               <span className="text-muted-foreground text-xs">
                 {chartConfig[key].label}
@@ -343,7 +352,19 @@ const LatencyMonitoringCard = ({
       <CardContent className="px-2 pt-4 sm:p-6">
         <Tabs
           defaultValue="realtime"
-          onValueChange={(value) => setViewMode(value as ViewMode)}
+          onValueChange={(value) => {
+            setViewMode(value as ViewMode);
+            const labels: Record<ViewMode, string> = {
+              realtime: "Real-time",
+              hourly: "Hourly",
+              twelvehour: "12-hour",
+              daily: "Daily",
+            };
+            toast.success(
+              `Viewing ${labels[value as ViewMode]} latency data`,
+              { duration: 1500 },
+            );
+          }}
         >
           <TabsList>
             <TabsTrigger value="realtime">{t("latency.tab_realtime")}</TabsTrigger>

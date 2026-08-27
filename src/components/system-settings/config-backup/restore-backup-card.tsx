@@ -41,6 +41,7 @@ import {
 } from "@/lib/reboot";
 import { cn } from "@/lib/utils";
 import { useTranslation, Trans } from "react-i18next";
+import { toast } from "sonner";
 
 const SECTION_LABELS: Record<string, string> = Object.fromEntries(
   BACKUP_SECTIONS.map((s) => [s.key, s.label]),
@@ -175,6 +176,37 @@ const RestoreConfigBackupCard = () => {
     }
   }, [ui, state.progress?.reboot_required]);
 
+  // Toast on user-action outcomes without touching the restore flow: file read,
+  // password verified, restore started/completed/failed, and reset-to-idle.
+  const prevUi = useRef(ui);
+  useEffect(() => {
+    const prev = prevUi.current;
+    if (prev === "reading" && ui === "password_required") {
+      toast.success("Backup file read", { duration: 2500 });
+    } else if (prev === "reading" && ui === "failed") {
+      toast.error("Failed to read backup file", { duration: 3500 });
+    } else if (
+      (prev === "password_required" || prev === "password_incorrect") &&
+      (ui === "model_warning" || ui === "ready")
+    ) {
+      toast.success("Restore password verified", { duration: 2500 });
+    } else if (prev === "password_required" && ui === "password_incorrect") {
+      toast.error("Incorrect restore password", { duration: 3500 });
+    } else if (ui === "applying" && prev === "ready") {
+      toast.success("Restore started", { duration: 2500 });
+    } else if (
+      prev === "applying" &&
+      (ui === "success" || ui === "partial_success")
+    ) {
+      toast.success("Restore completed", { duration: 2500 });
+    } else if (prev === "applying" && ui === "failed") {
+      toast.error("Restore failed", { duration: 3500 });
+    } else if (prev !== "idle" && ui === "idle") {
+      toast.success("Restore reset", { duration: 2500 });
+    }
+    prevUi.current = ui;
+  }, [ui]);
+
   const handleRebootNow = async () => {
     setRebootBusy(true);
     clearPendingReboot();
@@ -186,15 +218,18 @@ const RestoreConfigBackupCard = () => {
         throw new Error(`reboot_failed: HTTP ${res.status}`);
       }
       enterRebootFlow("config_restore");
+      toast.success("Reboot started", { duration: 2500 });
     } catch {
       requestRebootLater("config_restore");
       setRebootBusy(false);
       setRebootDialogOpen(false);
+      toast.error("Reboot failed — will reboot later", { duration: 3500 });
     }
   };
 
   const handleRebootLater = () => {
     setRebootDialogOpen(false);
+    toast.success("Reboot scheduled for later", { duration: 2500 });
   };
 
   const openFilePicker = () => fileInput.current?.click();

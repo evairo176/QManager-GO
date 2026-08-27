@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { motion } from "motion/react";
 import { containerVariants, itemVariants } from "@/lib/motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -143,7 +144,15 @@ const DeviceStatusComponent = ({
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setHidePrivate((prev) => !prev)}
+                onClick={() => {
+                  const next = !hidePrivate;
+                  setHidePrivate(next);
+                  toast.info(
+                    next
+                      ? t("device_status.toast_show_private")
+                      : t("device_status.toast_hide_private"),
+                  );
+                }}
                 aria-label={
                   hidePrivate ? t("device_status.show_private") : t("device_status.hide_private")
                 }

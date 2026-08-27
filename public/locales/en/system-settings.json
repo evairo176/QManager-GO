@@ -492,7 +492,8 @@
       },
       "error": {
         "title": "Failed to load device information",
-        "retry_button": "Retry"
+        "retry_button": "Retry",
+        "retrying": "Refreshing device info…"
       }
     },
     "about_qmanager": {
