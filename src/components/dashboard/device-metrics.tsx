@@ -304,6 +304,7 @@ const DeviceMetricsComponent = ({
   const unitPrefs = useUnitPreferences();
   const temp = deviceData?.temperature ?? null;
   const cpu = deviceData?.cpu_usage ?? null;
+  const loadAvg = deviceData?.load_avg ?? "";
   const memUsed = deviceData?.memory_used_mb ?? 0;
   const memTotal = deviceData?.memory_total_mb ?? 0;
 
@@ -413,6 +414,29 @@ const DeviceMetricsComponent = ({
                 dangerAt={CPU_DANGER}
               />
             )}
+          </div>
+
+          {/* Load Average (1/5/15 min) */}
+          <Separator />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <p className="font-semibold text-muted-foreground text-sm">
+                {t("metrics.load_average")}
+              </p>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="inline-flex" aria-label={t("metrics.load_average_aria")}>
+                    <TbInfoCircleFilled className="size-3 text-muted-foreground" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t("metrics.load_average_tooltip")}</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <p className="font-semibold text-sm tabular-nums">
+              {loadAvg || "-"}
+            </p>
           </div>
 
           {/* Memory Usage */}

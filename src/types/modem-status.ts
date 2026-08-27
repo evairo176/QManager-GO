@@ -214,6 +214,8 @@ export interface DeviceStatus {
   temperature: number | null;
   /** CPU usage percentage (0–100), calculated from /proc/stat delta between poll cycles */
   cpu_usage: number;
+  /** Load average "1m 5m 15m" string from /proc/loadavg (empty if unavailable) */
+  load_avg?: string;
   /** Used memory in MB */
   memory_used_mb: number;
   /** Total memory in MB */

@@ -387,6 +387,7 @@ func (p *Poller) pollOnce() {
 			"poller_tier":              "active",
 			"temperature":              temp,
 			"cpu_usage":                cpuUsage,
+			"load_avg":                 readLoadAvg(),
 			"memory_used_mb":           memUsedMb,
 			"memory_total_mb":          memTotalMb,
 			"uptime_seconds":           uptimeSec,
@@ -769,6 +770,20 @@ func parseQuectelQENG(resp string, netType, serviceStatus, carrier, lteBand *str
 			}
 		}
 	}
+}
+
+// readLoadAvg returns the 1/5/15-minute load averages from /proc/loadavg as
+// a string like "2.33 2.38 2.45", or "" if unreadable.
+func readLoadAvg() string {
+	data, err := os.ReadFile("/proc/loadavg")
+	if err != nil {
+		return ""
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) < 3 {
+		return ""
+	}
+	return fields[0] + " " + fields[1] + " " + fields[2]
 }
 
 func (p *Poller) getSystemCpuUsage() int {
