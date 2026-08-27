@@ -1,13 +1,13 @@
-# 🚀 QManager Go Edition v0.2.3-go
+# 🚀 QManager Go Edition v0.2.4-beta.1
 
-QManager Go Edition v0.2.3-go introduces AT serial port auto-discovery, dynamic CPU architecture and init system detection (`systemd` vs `procd init.d`) in deployment tools, native OpenWRT init.d service support, and a comprehensive Hardware & Device Support matrix.
+QManager Go Edition v0.2.4-beta.1 brings 100% Go Native API coverage across all WebUI modules, native 5G NR5G-SA (Standalone) & NR5G-NSA signal parsing, universal modem hardware auto-discovery, and a dedicated Python diagnostic toolkit.
 
 ## ✨ New Features & Enhancements
 
-- **AT Serial Port Auto-Discovery**: Dynamic auto-scan of candidate serial ports (`/dev/smd11` → `/dev/smd7` → `/dev/ttyUSB2` → `/dev/ttyUSB3` → `/dev/ttyUSB0` → `/dev/ttyACM0` → `/dev/cdc-wdm0`), making QManager Go zero-config on both internal modems and host routers.
-- **Smart 1-Click Deployment Tooling**: `deploy.sh` and `deploy.ps1` now auto-detect target CPU architecture (`uname -m`) and init system (`systemd` vs OpenWRT `init.d`), pushing the exact matching binary and service script.
-- **OpenWRT Procd Init Script**: Added `/etc/init.d/qmanager-core` for running `qmanager-core` seamlessly on OpenWRT devices without Systemd.
-- **Hardware & Device Support Guide**: Created [`docs/HARDWARE-SUPPORT.md`](https://github.com/latifangren/QManager-GO/blob/dev-go/docs/HARDWARE-SUPPORT.md) detailing modem chipset compatibility (SDX55/62/65 vs SDX72/75), ARMv7 32-bit vs ARMv8/ARM64 64-bit parity, and On-Modem vs Host Router deployment modes.
+- **100% Go Native API Handlers**: Replaced all remaining legacy shell CGI handlers with high-performance in-memory Go endpoints (`/network/ethernet.sh`, `/frequency/status.sh`, `/tower/status.sh`, `/at_cmd/speedtest_start.sh`, `/cellular/network_priority.sh`, `/cellular/apn.sh`, `/cellular/imei.sh`, `/cellular/fplmn.sh`, `/system/known_sims.sh`, etc.).
+- **5G Standalone (NR5G-SA) & NSA Signal Parsing**: Poller engine now accurately decodes 5G ARFCN, PCI, Band (N12/N28/N41/N77/N78), RSRP (-92 dBm), RSRQ, and SINR from Quectel `+QENG` serving cell responses.
+- **Universal Modem Hardware Auto-Discovery**: Dynamic query of Model, Firmware, IMEI, ICCID, IMSI, Carrier Operator, and WAN IPv4/IPv6 address via 3GPP and Quectel AT commands (`ATI`, `AT+CGMI`, `AT+GMM`, `AT+GSN`, `AT+QCCID`, `AT+CIMI`, `AT+COPS?`, `AT+CGPADDR`).
+- **Modem Python Diagnostic Toolkit**: Added `tests/py_modem/` containing 23 Python SSH/AT diagnostic tools with sanitized environment-driven authentication (`SSH_HOST`, `SSH_USERNAME`, `SSH_PASSWORD`).
 
 ---
 

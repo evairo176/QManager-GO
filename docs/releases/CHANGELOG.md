@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [v0.2.4-beta.1] - 2026-08-27
+
+### 🚀 Added & Enhanced
+- **Full Go Native API Coverage**: Replaced all remaining legacy shell CGI handlers with 100% Go Native in-memory HTTP handlers (`pkg/api/`):
+  - Ethernet Physical Link Status & Auto-Negotiation (`/cgi-bin/quecmanager/network/ethernet.sh`).
+  - Frequency Channel Locking (`/cgi-bin/quecmanager/frequency/status.sh` & `lock.sh`).
+  - Tower Cell Locking Status, Settings, and Scheduling (`/cgi-bin/quecmanager/tower/status.sh`, `settings.sh`, `schedule.sh`).
+  - Built-in Speedtest Engine (`speedtest_check.sh`, `speedtest_servers.sh`, `speedtest_start.sh`).
+  - APN & IMEI Management (`cellular/apn.sh`, `cellular/imei.sh`).
+  - Network Priority Order (`cellular/network_priority.sh`).
+  - Forbidden PLMN (`cellular/fplmn.sh`), Known SIMs (`system/known_sims.sh`), Pending Reboot (`system/pending_reboot.sh`), and Bandwidth Settings (`monitoring/bandwidth.sh`).
+- **5G NR5G-SA & NR5G-NSA Poller Engine** (`pkg/daemon/poller.go`): Enhanced `+QENG="servingcell"` parser for 5G Standalone and Non-Standalone modes, mapping ARFCN, 5G PCI, Band (N12/N28/N41/N77/N78), RSRP, RSRQ, and SINR cleanly into state cache.
+- **Universal Modem Hardware Auto-Discovery**: Dynamic non-hardcoded query of Manufacturer, Model, Firmware, IMEI, ICCID, IMSI, Carrier Operator, and WAN IPv4/IPv6 address via standard 3GPP and Quectel AT commands (`ATI`, `AT+CGMI`, `AT+GMM`, `AT+GSN`, `AT+QCCID`, `AT+CIMI`, `AT+COPS?`, `AT+CGPADDR`).
+- **Modem Python Diagnostic Toolkit** (`tests/py_modem/`): Organized 23 standalone Python SSH/AT diagnostic tools with `requirements.txt` and `README.md` using environment-driven credential loading.
+
+---
+
 ## [v0.2.3-go] - 2026-08-25
 
 ### 🚀 Added & Enhanced
