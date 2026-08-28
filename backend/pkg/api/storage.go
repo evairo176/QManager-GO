@@ -18,6 +18,8 @@ type StorageMount struct {
 	UsedPercent int `json:"used_percent"`
 	// Readable label for the UI ("System", "Firmware", "User data", "RAM").
 	Label string `json:"label"`
+	// True when the mount is read-only (e.g. rootfs/firmware partitions).
+	ReadOnly bool `json:"read_only"`
 }
 
 // HandleStorage returns filesystem usage for the mounts that matter on the
@@ -34,15 +36,16 @@ func (s *Server) HandleStorage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) collectStorage() []StorageMount {
 	// (path, filesystem label, friendly label)
 	targets := []struct {
-		Path string
-		Fs   string
-		Label string
+		Path   string
+		Fs     string
+		Label  string
 	}{
 		{"/", "ubi0:rootfs", "System"},
 		{"/firmware", "ubi1:modem", "Firmware"},
 		{"/usrdata", "ubi2_0", "User data"},
 		{"/tmp", "tmpfs", "RAM"},
 	}
+	roSet := readOnlyMounts()
 	mounts := make([]StorageMount, 0, len(targets))
 	for _, t := range targets {
 		var st syscall.Statfs_t
@@ -68,6 +71,7 @@ func (s *Server) collectStorage() []StorageMount {
 			FreeBytes:   free,
 			UsedPercent: pct,
 			Label:       t.Label,
+			ReadOnly:    roSet[t.Path],
 		})
 	}
 	// Add RAM from /proc/meminfo (MemTotal / MemAvailable).
@@ -86,6 +90,80 @@ func (s *Server) collectStorage() []StorageMount {
 }
 
 type memInfo struct{ total, available uint64 }
+
+// readOnlyMounts returns a set of mount points that are mounted read-only,
+// parsed from /proc/mounts (field 4 contains "ro").
+func readOnlyMounts() map[string]bool {
+	ro := make(map[string]bool)
+	b, err := os.ReadFile("/proc/mounts")
+	if err != nil {
+		return ro
+	}
+	for _, line := range splitLines(b) {
+		fields := splitFields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		if hasField(fields[3], "ro") {
+			ro[fields[1]] = true
+		}
+	}
+	return ro
+}
+
+func splitLines(b []byte) []string {
+	var out []string
+	start := 0
+	for i := 0; i <= len(b); i++ {
+		if i == len(b) || b[i] == '\n' {
+			if i > start {
+				out = append(out, string(b[start:i]))
+			}
+			start = i + 1
+		}
+	}
+	return out
+}
+
+func splitFields(s string) []string {
+	var out []string
+	start := -1
+	for i := 0; i <= len(s); i++ {
+		if i == len(s) || s[i] == ' ' || s[i] == '\t' {
+			if start >= 0 {
+				out = append(out, s[start:i])
+				start = -1
+			}
+		} else if start < 0 {
+			start = i
+		}
+	}
+	return out
+}
+
+func hasField(fields string, want string) bool {
+	// mount options are comma-separated, e.g. "ro,relatime,bulk_read".
+	for _, f := range splitComma(fields) {
+		if f == want {
+			return true
+		}
+	}
+	return false
+}
+
+func splitComma(s string) []string {
+	var out []string
+	start := 0
+	for i := 0; i <= len(s); i++ {
+		if i == len(s) || s[i] == ',' {
+			if i > start {
+				out = append(out, s[start:i])
+			}
+			start = i + 1
+		}
+	}
+	return out
+}
 
 func readMemInfo() (memInfo, bool) {
 	b, err := os.ReadFile("/proc/meminfo")

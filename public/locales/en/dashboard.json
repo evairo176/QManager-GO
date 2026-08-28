@@ -185,6 +185,7 @@
     "legend_low": "Low (<75%)",
     "legend_medium": "Medium (75-90%)",
     "legend_high": "High (>90%)",
-    "empty": "No storage data available"
+    "empty": "No storage data available",
+    "read_only": "Read-only (firmware)"
   }
 }

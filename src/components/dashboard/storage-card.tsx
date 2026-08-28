@@ -49,6 +49,12 @@ function StorageRow({ mount }: { mount: StorageMount }) {
           <span className="text-xs text-muted-foreground">
             {mount.mount_point}
           </span>
+          {mount.read_only && (
+            <Badge variant="outline" className="gap-1 text-[10px]">
+              <TbInfoCircleFilled className="size-2.5" />
+              {t("storage.read_only")}
+            </Badge>
+          )}
         </div>
         <span
           className={cn("font-mono text-xs font-semibold", usageTextColor(pct))}

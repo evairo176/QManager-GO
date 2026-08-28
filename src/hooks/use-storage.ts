@@ -11,6 +11,7 @@ export interface StorageMount {
   free_bytes: number;
   used_percent: number;
   label: string;
+  read_only?: boolean;
 }
 
 interface StorageState {
