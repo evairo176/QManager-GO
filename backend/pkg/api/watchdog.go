@@ -112,6 +112,13 @@ func (s *Server) HandleMonitoringWatchdog(w http.ResponseWriter, r *http.Request
 func (s *Server) watchdogGet(w http.ResponseWriter) {
 	cfg := qmReadConfig()["watchcat"]
 	status := qmReadFile(qmWatchcatState)
+	// Fall back to the internal Go watchdog's status file (the old external
+	// qmanager-watchcat daemon was removed; the in-process watchdog writes
+	// /tmp/qmanager_watchdog_status.json). Map its fields into the shape the
+	// frontend WatchdogLiveStatus expects.
+	if len(status) == 0 {
+		status = readInternalWatchdogStatus()
+	}
 	simFailover := qmReadFile(qmSimFailover)
 	simSwap := qmReadFile(qmSimSwapFlag)
 	autoDisabled := false
@@ -136,6 +143,24 @@ func (s *Server) watchdogGet(w http.ResponseWriter) {
 		backupSimAny = nil
 	}
 
+	// Frontend contract fields that live outside the legacy section: read the
+	// ping probe profile from /etc/qmanager/ping_profile.json (written by the
+	// internal watchdog) and quality thresholds from quality_thresholds.json.
+	probeProfile := "relaxed"
+	var intervalOverride any
+	qualityThresholds := map[string]any(nil)
+	if pp := qmReadJSONFile("/etc/qmanager/ping_profile.json"); len(pp) > 0 {
+		if p, ok := pp["profile"].(string); ok && p != "" {
+			probeProfile = p
+		}
+		if o, ok := pp["interval_override_sec"]; ok {
+			intervalOverride = o
+		}
+	}
+	if qt := qmReadJSONFile("/etc/qmanager/quality_thresholds.json"); len(qt) > 0 {
+		qualityThresholds = qt
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 		"settings": map[string]any{
@@ -151,11 +176,63 @@ func (s *Server) watchdogGet(w http.ResponseWriter) {
 			"backup_sim_slot":      backupSimAny,
 			"max_reboots_per_hour": qmCfgInt(cfg, "max_reboots_per_hour", 10),
 		},
-		"status":       status,
-		"sim_failover": simFailover,
-		"sim_swap":     simSwap,
-		"auto_disabled": autoDisabled,
+		"probe_profile":       probeProfile,
+		"interval_override":   intervalOverride,
+		"effective_interval":  qmCfgInt(cfg, "probe_interval", 5),
+		"quality_thresholds":  qualityThresholds,
+		"status":              status,
+		"sim_failover":        simFailover,
+		"sim_swap":            simSwap,
+		"auto_disabled":       autoDisabled,
 	})
+}
+
+// readInternalWatchdogStatus maps /tmp/qmanager_watchdog_status.json
+// (written by the in-process daemon.Watchdog) into the WatchdogLiveStatus
+// shape the frontend renders.
+func readInternalWatchdogStatus() map[string]any {
+	out := map[string]any{}
+	data, err := os.ReadFile("/tmp/qmanager_watchdog_status.json")
+	if err != nil {
+		return out
+	}
+	var raw map[string]any
+	if json.Unmarshal(data, &raw) != nil {
+		return out
+	}
+
+	connected := qmBool(raw["is_connected"])
+	fails := qmCfgInt(raw, "consecutive_fails", 0)
+	state := "degraded"
+	if connected {
+		state = "running"
+	}
+	actionTaken := strings.ToLower(qmStr(raw["action_taken"]))
+
+	out = map[string]any{
+		"timestamp":           raw["last_check_time"],
+		"enabled":             qmBool(raw["enabled"]),
+		"state":               state,
+		"current_tier":        0,
+		"failure_count":       fails,
+		"last_recovery_time":  nil,
+		"last_recovery_tier":  nil,
+		"total_recoveries":    0,
+		"cooldown_remaining":  0,
+		"sim_failover_active": false,
+		"original_sim_slot":   nil,
+		"current_sim_slot":    nil,
+		"reboots_this_hour":   0,
+		"quality_breach_count": 0,
+		"quality_enabled":     false,
+		"last_recovery_reason": actionTaken,
+		"ssr_hold":            false,
+		"last_ssr_detected":   nil,
+	}
+	// Keep the raw fields too, so the status card can show the real last-check
+	// time, target host and connected state even with the terse UI shape.
+	out["_raw"] = raw
+	return out
 }
 
 func (s *Server) watchdogPost(w http.ResponseWriter, r *http.Request) {
