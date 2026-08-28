@@ -201,33 +201,42 @@ func readInternalWatchdogStatus() map[string]any {
 		return out
 	}
 
-	connected := qmBool(raw["is_connected"])
 	fails := qmCfgInt(raw, "consecutive_fails", 0)
-	state := "degraded"
-	if connected {
-		state = "running"
+	threshold := qmCfgInt(raw, "fail_threshold", 3)
+	enabled := qmBool(raw["enabled"])
+	// Frontend WatchcatState enum: monitor | suspect | recovery | cooldown |
+	// locked | disabled | ssr_hold — DO NOT send free-form values like
+	// "running"/"degraded" (status card falls back to 'Starting up').
+	state := "monitor"
+	switch {
+	case !enabled:
+		state = "disabled"
+	case fails >= threshold:
+		state = "recovery"
+	case fails > 0:
+		state = "suspect"
 	}
 	actionTaken := strings.ToLower(qmStr(raw["action_taken"]))
 
 	out = map[string]any{
-		"timestamp":           raw["last_check_time"],
-		"enabled":             qmBool(raw["enabled"]),
-		"state":               state,
-		"current_tier":        0,
-		"failure_count":       fails,
-		"last_recovery_time":  nil,
-		"last_recovery_tier":  nil,
-		"total_recoveries":    0,
-		"cooldown_remaining":  0,
-		"sim_failover_active": false,
-		"original_sim_slot":   nil,
-		"current_sim_slot":    nil,
-		"reboots_this_hour":   0,
+		"timestamp":            raw["last_check_time"],
+		"enabled":              enabled,
+		"state":                state,
+		"current_tier":         0,
+		"failure_count":        fails,
+		"last_recovery_time":   nil,
+		"last_recovery_tier":   nil,
+		"total_recoveries":     0,
+		"cooldown_remaining":   0,
+		"sim_failover_active":  false,
+		"original_sim_slot":    nil,
+		"current_sim_slot":     nil,
+		"reboots_this_hour":    0,
 		"quality_breach_count": 0,
-		"quality_enabled":     false,
+		"quality_enabled":      false,
 		"last_recovery_reason": actionTaken,
-		"ssr_hold":            false,
-		"last_ssr_detected":   nil,
+		"ssr_hold":             false,
+		"last_ssr_detected":    nil,
 	}
 	// Keep the raw fields too, so the status card can show the real last-check
 	// time, target host and connected state even with the terse UI shape.
