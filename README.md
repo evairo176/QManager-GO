@@ -135,29 +135,119 @@ ln -sf /etc/init.d/qmanager-core /etc/rc.d/S99qmanager-core
 
 ---
 
-## 🔄 Legacy QManager (PHP/Python/Lighttpd) Coexistence & Migration
+## 🔄 Removing Legacy QManager / SimpleAdmin / QuecManager (Full Migration to QManager-Go)
 
-If your modem previously ran legacy **QManager (PHP/Python/Lighttpd)** or **QuecManager**:
+If your modem previously ran **legacy QManager (PHP/Python/Lighttpd)**, **SimpleAdmin**, or **QuecManager**, this guide removes ALL of it so your modem runs **exclusively** on QManager-Go.
 
-### 1. What Happens to Legacy QManager?
-- **Port Conflict (Port 80/443)**: `qmanager-core` is a standalone Go binary with an embedded Next.js SPA frontend and native HTTP server. It listens on Port 80 and 443. Running both simultaneously on Port 80 will cause a port conflict.
-- **Data & Configuration Preserved**: `qmanager-core` reads and writes to the exact same `/etc/qmanager/` configuration directory (APN, band locks, SIM profiles, custom DNS, tower locks). Upgrading to Go Edition will **NOT** delete your saved SIM profiles or settings.
+### 1. What Happens to Legacy Software?
+- **Port Conflict (80/443)**: `qmanager-core` is a standalone Go binary with an embedded Next.js SPA frontend and native HTTP server on Port 80/443. Anything else bound to those ports (lighttpd, SimpleAdmin, python) must be removed.
+- **Data & Config Preserved**: `qmanager-core` reads/writes the exact same `/etc/qmanager/` config directory (APN, band locks, SIM profiles, DNS, tower locks). Migration will **NOT** delete saved SIM profiles or settings.
+- **Security**: Legacy SimpleAdmin ships dangerous leftovers — a world-writable `.htpasswd`, `www-data` sudoers granting `cat`/`echo` as root (read `/etc/shadow`), and AT-bridge socat daemons. All of these are removed below.
 
-### 2. Disabling / Cleaning Up Legacy QManager
-To cleanly replace legacy QManager and free up Port 80:
+### 2. Stop & Disable All Legacy Services
 
 ```sh
 ssh root@192.168.225.1
-# 1. Stop and disable legacy lighttpd / python daemons
+
+# Legacy web daemons (lighttpd / python / QuecManager)
 systemctl stop lighttpd 2>/dev/null; systemctl disable lighttpd 2>/dev/null
 /etc/init.d/lighttpd stop 2>/dev/null; /etc/init.d/lighttpd disable 2>/dev/null
 killall -9 lighttpd python python3 2>/dev/null
 
-# 2. Enable & start QManager Go Edition
+# SimpleAdmin helper daemons (firewall, socat AT-bridge, TTL override, auto-update)
+systemctl stop simplefirewall ttl-override install_simpleadmin 2>/dev/null
+systemctl disable simplefirewall ttl-override install_simpleadmin 2>/dev/null
+
+for u in socat-smd11 socat-smd11-from-ttyIN socat-smd11-to-ttyIN \
+         socat-smd7 socat-smd7-from-ttyIN2 socat-smd7-to-ttyIN2 socat-killsmd7bridge; do
+  systemctl stop $u 2>/dev/null; systemctl disable $u 2>/dev/null
+done
+
+# Purge stale systemd unit references (rootfs is read-only; disable is enough)
+systemctl daemon-reload
+```
+
+### 3. Delete Legacy Directories & Dangerous Files
+
+```sh
+# SimpleAdmin + socat + firewall + auto-updater directories
+rm -rf /usrdata/simplefirewall /usrdata/simpleupdates /usrdata/socat-at-bridge
+
+# Old QManager web assets (kept as backup by past deploy scripts)
+rm -rf /usrdata/qmanager/web.old
+
+# World-writable password files & helper scripts (privilege-escalation risks)
+rm -f /opt/etc/.htpasswd /usrdata/opt/etc/.htpasswd
+rm -f /usrdata/cfun_fix.sh
+rm -f /usrdata/root/bin/simplepasswd /usrdata/root/bin/htpasswd
+
+# Broken cron referencing a removed watchcat script
+sed -i '/watchcat.sh/d' /etc/crontab
+```
+
+> ⚠️ Unit files under `/lib/systemd/system/` can NOT be deleted (rootfs is read-only on Quectel modems) — but once disabled they never start again. Do not attempt to `rm -f` them.
+
+### 4. Harden `www-data` Sudoers (Kill Privilege Escalation)
+
+Legacy SimpleAdmin grants `www-data` passwordless `cat`/`echo` as root, which lets a compromised web user read `/etc/shadow` and write arbitrary files. QManager-Go runs as **root** and does not need those. Strip them from **both** sudoers copies:
+
+```sh
+for f in /opt/etc/sudoers.d/www-data /usrdata/opt/etc/sudoers.d/www-data; do
+  [ -f "$f" ] && sed -i 's|, /bin/echo, /bin/cat||' "$f"
+done
+# Verify: should now print "sudo: a password is required"
+sudo -u www-data sudo -n cat /etc/shadow
+```
+
+### 5. Install Persistent Firewall (Block Internet Access to Dashboard)
+
+`qmanager-core` listens on `:80/:443/:8838` bound to ALL interfaces — including `rmnet_data0` (the SIM WAN link). Without a firewall the dashboard is reachable from the public internet. Add a persistent, idempotent firewall service:
+
+```sh
+cat > /usrdata/qmanager-firewall.sh <<'EOF'
+#!/bin/sh
+# QManager firewall: block internet (rmnet_data0) access to modem services, keep LAN.
+iptables -C INPUT -i rmnet_data0 -p tcp --dport 80 -j DROP  2>/dev/null || iptables -A INPUT -i rmnet_data0 -p tcp --dport 80 -j DROP
+iptables -C INPUT -i rmnet_data0 -p tcp --dport 443 -j DROP 2>/dev/null || iptables -A INPUT -i rmnet_data0 -p tcp --dport 443 -j DROP
+iptables -C INPUT -i rmnet_data0 -p tcp --dport 8838 -j DROP 2>/dev/null || iptables -A INPUT -i rmnet_data0 -p tcp --dport 8838 -j DROP
+iptables -C INPUT -i rmnet_data0 -p tcp --dport 22 -j DROP 2>/dev/null || iptables -A INPUT -i rmnet_data0 -p tcp --dport 22 -j DROP
+exit 0
+EOF
+chmod +x /usrdata/qmanager-firewall.sh
+
+cat > /etc/systemd/system/qmanager-firewall.service <<'EOF'
+[Unit]
+Description=QManager Firewall (block internet access to modem services)
+After=network.target
+Before=qmanager-core.service
+
+[Service]
+Type=oneshot
+ExecStart=/usrdata/qmanager-firewall.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now qmanager-firewall
+```
+
+### 6. Enable & Start QManager Go Edition (Autostart on Boot)
+
+```sh
 systemctl daemon-reload
 systemctl enable qmanager-core
 systemctl restart qmanager-core
+
+# Verify
+systemctl is-enabled qmanager-core   # → enabled
+systemctl is-active  qmanager-core   # → active
+curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1/  # → 200
 ```
+
+> ⚠️ **Quectel cold-boot quirk**: on RM500Q/RM520N the full boot takes ~80s (`network.target` + QCMAP bring-up). SSH usually comes up in 1–2 min; `qmanager-core` may start ~80s after power-on even when enabled. That is normal — do not mistake it for a failed autostart. If you need web up sooner, use `After=basic.target` in the unit instead of `After=network.target` (see Step 2 note above).
 
 ---
 
