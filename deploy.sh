@@ -70,7 +70,9 @@ if [ "$TARGET" = "adb" ]; then
         if [ -f "$SYSTEMD_SERVICE" ]; then
             adb push "$SYSTEMD_SERVICE" /lib/systemd/system/qmanager-core.service
             adb shell "mkdir -p /lib/systemd/system/multi-user.target.wants && ln -sf /lib/systemd/system/qmanager-core.service /lib/systemd/system/multi-user.target.wants/qmanager-core.service"
-            adb shell "systemctl daemon-reload && systemctl restart qmanager-core"
+            # FIX PERMANEN: enable eksplisit + verify (symlink manual saja belum cukup di semua build)
+            adb shell "systemctl daemon-reload && systemctl enable qmanager-core && systemctl is-enabled qmanager-core"
+            adb shell "systemctl restart qmanager-core"
         fi
     fi
     adb shell "mount -o remount,ro / 2>/dev/null || true"
@@ -108,7 +110,9 @@ else
         if [ -f "$SYSTEMD_SERVICE" ]; then
             scp "$SYSTEMD_SERVICE" "root@$TARGET:/lib/systemd/system/qmanager-core.service"
             ssh "root@$TARGET" "mkdir -p /lib/systemd/system/multi-user.target.wants && ln -sf /lib/systemd/system/qmanager-core.service /lib/systemd/system/multi-user.target.wants/qmanager-core.service"
-            ssh "root@$TARGET" "systemctl daemon-reload && systemctl restart qmanager-core"
+            # FIX PERMANEN: enable eksplisit + verify is-enabled (biar auto-start tiap boot)
+            ssh "root@$TARGET" "systemctl daemon-reload && systemctl enable qmanager-core && echo 'is-enabled:' && systemctl is-enabled qmanager-core"
+            ssh "root@$TARGET" "systemctl restart qmanager-core"
             ssh "root@$TARGET" "systemctl status qmanager-core --no-pager"
         fi
     else
