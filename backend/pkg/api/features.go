@@ -851,9 +851,12 @@ func (s *Server) HandleKnownSims(w http.ResponseWriter, r *http.Request) {
 
 	// Known SIMs tracked in a JSON list of ICCIDs
 	path := "/etc/qmanager/known_sims.json"
-	var sims []string
+	sims := []string{} // always non-nil — frontend expects an array, never null
 	if data, err := os.ReadFile(path); err == nil {
 		_ = json.Unmarshal(data, &sims)
+		if sims == nil {
+			sims = []string{}
+		}
 	}
 
 	if r.Method == http.MethodPost {

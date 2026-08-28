@@ -22,6 +22,15 @@ type Poller struct {
 	lastCpuSys  uint64
 	lastCpuIdle uint64
 	mu          sync.Mutex
+
+	// State tracking for Recent Activity events (compare across polls)
+	evMu         sync.Mutex
+	lastNetType  string
+	lastLteBand  string
+	lastPci      int
+	lastRsrp     *int
+	lastOnline   bool
+	eventsBooted bool
 }
 
 func NewPoller(atClient at.Executor, interval time.Duration) *Poller {
@@ -437,6 +446,122 @@ func (p *Poller) pollOnce() {
 
 	// Record signal history NDJSON entry for realtime signal charts
 	p.recordSignalHistory(now, rsrp, rsrq, sinr, nrRsrp, nrRsrq, nrSinr)
+
+	// Recent Activity: detect state changes since the previous poll and
+	// append NDJSON events, so the dashboard "Recent Activity" panel has data.
+	p.detectAndRecordEvents(now, netType, lteBand, pci, rsrp, modemReachable)
+}
+
+// recordEvent appends one NDJSON line to /tmp/qmanager_events.json.
+// Frontend contract (use-recent-activities.ts, NetworkEvent):
+//   {"timestamp": <unix seconds>, "type": "<type>", "severity": "info|warning|error",
+//    "message": "<human readable>"}
+// Keep the last 200 events.
+func (p *Poller) recordEvent(ts int64, typ, severity, message string) {
+	entry := map[string]any{
+		"timestamp": ts,
+		"type":      typ,
+		"severity":  severity,
+		"message":   message,
+	}
+	lineBytes, err := json.Marshal(entry)
+	if err != nil {
+		return
+	}
+
+	histFile := "/tmp/qmanager_events.json"
+	var existing []string
+	if data, err := os.ReadFile(histFile); err == nil {
+		for _, l := range strings.Split(string(data), "\n") {
+			l = strings.TrimSpace(l)
+			if l != "" {
+				existing = append(existing, l)
+			}
+		}
+	}
+	existing = append(existing, string(lineBytes))
+	if len(existing) > 200 {
+		existing = existing[len(existing)-200:]
+	}
+	_ = os.WriteFile(histFile, []byte(strings.Join(existing, "\n")+"\n"), 0644)
+}
+
+// detectAndRecordEvents compares current modem state against the previous poll
+// and emits one Recent Activity event per meaningful transition. The first poll
+// seeds the baseline and does not emit (avoids a wall of "changes" at boot).
+func (p *Poller) detectAndRecordEvents(now int64, netType, lteBand string, pci *int, rsrp *int, modemReachable bool) {
+	p.evMu.Lock()
+	defer p.evMu.Unlock()
+
+	online := modemReachable
+	curPci := 0
+	if pci != nil {
+		curPci = *pci
+	}
+
+	// First poll: seed baseline + emit a startup event so the Recent Activity
+	// panel is never empty after a reboot.
+	if !p.eventsBooted {
+		p.eventsBooted = true
+		p.lastNetType = netType
+		p.lastLteBand = lteBand
+		p.lastPci = curPci
+		p.lastRsrp = rsrp
+		p.lastOnline = online
+		p.recordEvent(now, "signal_restored", "info",
+			fmt.Sprintf("QManager ready — modem online (%s)", labelOrUnknown(netType)))
+		return
+	}
+
+	// Signal lost / restored
+	if online != p.lastOnline {
+		if !online {
+			p.recordEvent(now, "signal_lost", "error", "Modem became unreachable")
+			p.recordEvent(now, "internet_lost", "warning", "Internet connectivity lost")
+		} else {
+			p.recordEvent(now, "signal_restored", "info", "Modem signal restored")
+			p.recordEvent(now, "internet_restored", "info", "Internet connectivity restored")
+		}
+		p.lastOnline = online
+		p.lastNetType = netType
+		p.lastLteBand = lteBand
+		p.lastPci = curPci
+		p.lastRsrp = rsrp
+		return
+	}
+
+	// Network mode change (LTE <-> NR5G-NSA etc.)
+	if netType != p.lastNetType && netType != "" {
+		p.recordEvent(now, "network_mode", "info",
+			fmt.Sprintf("Network mode changed: %s → %s", labelOrUnknown(p.lastNetType), netType))
+		p.lastNetType = netType
+	}
+
+	// Band change
+	if lteBand != p.lastLteBand && lteBand != "" {
+		p.recordEvent(now, "band_change", "info",
+			fmt.Sprintf("LTE band changed: %s → %s", labelOrUnknown(p.lastLteBand), lteBand))
+		p.lastLteBand = lteBand
+	}
+
+	// PCI handoff
+	if curPci != 0 && curPci != p.lastPci {
+		p.recordEvent(now, "pci_change", "info",
+			fmt.Sprintf("Cell handoff: PCI %d → %d", p.lastPci, curPci))
+		p.lastPci = curPci
+	}
+
+	// High latency threshold (> 90ms) via latency history RTT — keep simple:
+	// we already record internet lost/restored; latency thresholds are handled
+	// by the watchdog for now.
+	_ = rsrp
+}
+
+func labelOrUnknown(s string) string {
+	if s == "" {
+		return "unknown"
+	}
+	return s
 }
 
 func (p *Poller) recordSignalHistory(ts int64, rsrp, rsrq, sinr, nrRsrp, nrRsrq, nrSinr *int) {
