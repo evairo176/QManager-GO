@@ -108,12 +108,30 @@ else
     if [ "$HAS_SYSTEMD" = "yes" ]; then
         echo "==> Detected Init System: Systemd"
         if [ -f "$SYSTEMD_SERVICE" ]; then
+            # CRITICAL: install unit to /lib (rootfs), NOT /etc.
+            # On Quectel modems /etc lives on the late-mounted ubi2_0 volume, so
+            # systemd silently skips custom units whose fragment is in /etc during
+            # cold boot (no start attempt, no error). Units in /lib/systemd/system
+            # (same place as sshd) are guaranteed to be picked up. ExecStart must
+            # also not point into /usrdata directly, because systemd then derives
+            # RequiresMountsFor=/usrdata which can't resolve at boot -> unit skipped.
+            ssh "root@$TARGET" "mount -o remount,rw / 2>/dev/null || true"
             scp "$SYSTEMD_SERVICE" "root@$TARGET:/lib/systemd/system/qmanager-core.service"
-            ssh "root@$TARGET" "mkdir -p /lib/systemd/system/multi-user.target.wants && ln -sf /lib/systemd/system/qmanager-core.service /lib/systemd/system/multi-user.target.wants/qmanager-core.service"
-            # FIX PERMANEN: enable eksplisit + verify is-enabled (biar auto-start tiap boot)
+            # Wrapper in /lib avoids auto-derived RequiresMountsFor=/usrdata
+            ssh "root@$TARGET" "cat > /lib/qmanager-start.sh <<'WMEOF'
+#!/bin/sh
+# QManager launcher wrapper - lives on rootfs so systemd sees no /usrdata mount dep.
+sleep 5
+cd /usrdata/qmanager
+exec /usrdata/qmanager/qmanager-core
+WMEOF
+chmod +x /lib/qmanager-start.sh"
+            ssh "root@$TARGET" "mkdir -p /lib/systemd/system/multi-user.target.wants && ln -sf /lib/systemd/system/qmanager-core.service /lib/systemd/system/multi-user.target.wants/qmanager-core.service && rm -f /etc/systemd/system/qmanager-core.service /etc/systemd/system/multi-user.target.wants/qmanager-core.service"
+            # enable eksplisit + verify is-enabled (biar auto-start tiap boot)
             ssh "root@$TARGET" "systemctl daemon-reload && systemctl enable qmanager-core && echo 'is-enabled:' && systemctl is-enabled qmanager-core"
             ssh "root@$TARGET" "systemctl restart qmanager-core"
             ssh "root@$TARGET" "systemctl status qmanager-core --no-pager"
+            ssh "root@$TARGET" "mount -o remount,ro / 2>/dev/null || true"
         fi
     else
         echo "==> Detected Init System: OpenWRT procd (init.d)"
