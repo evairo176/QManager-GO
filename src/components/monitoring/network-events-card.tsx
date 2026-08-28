@@ -160,15 +160,17 @@ function EventsTable({
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell className="max-w-md">{event.message}</TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    <div className="flex flex-col">
-                      <span className="text-sm">{date}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {time}
-                      </span>
-                    </div>
-                  </TableCell>
+                  <TableCell className="max-w-md min-w-0 break-words">
+                      {event.message}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <div className="flex flex-col">
+                        <span className="text-sm">{date}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {time}
+                        </span>
+                      </div>
+                    </TableCell>
                 </MotionTableRow>
               );
             })
@@ -297,138 +299,137 @@ const NetworkEventsCard = () => {
             </Alert>
           )}
 
-          <div className="flex flex-col sm:py-4">
-            <div className="grid flex-1 items-start gap-4 sm:py-0 md:gap-8">
-              <Tabs value={activeTab} onValueChange={(v) => {
-                setActiveTab(v);
-                toast.success("Filtered events", { duration: 1500 });
-              }}>
-                <div className="flex items-center">
-                  <TabsList>
-                    <TabsTrigger value="all">
-                      {t("network_events.tab_all")}
-                    </TabsTrigger>
-                    <TabsTrigger value="bandChanges">
-                      <span className="hidden @sm/card:inline">
-                        {t("network_events.tab_band_changes")}
-                      </span>
-                      <Radio className="@sm/card:hidden" />
-                    </TabsTrigger>
-                    <TabsTrigger value="networkMode">
-                      <span className="hidden @sm/card:inline">
-                        {t("network_events.tab_network_mode")}
-                      </span>
-                      <Signal className="@sm/card:hidden" />
-                    </TabsTrigger>
-                    <TabsTrigger value="dataConnection">
-                      <span className="hidden @sm/card:inline">
-                        {t("network_events.tab_data_connection")}
-                      </span>
-                      <Wifi className="@sm/card:hidden" />
-                    </TabsTrigger>
-                  </TabsList>
-                  <div className="ml-auto flex items-center gap-2">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 gap-1"
-                        >
-                          <ArrowUpDown className="h-3.5 w-3.5" />
-                          <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
-                            {t("network_events.sort_label")}
-                          </span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>
-                          {t("network_events.sort_label")}
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuCheckboxItem
-                          checked={sortOrder === "newest"}
-                          onCheckedChange={() => {
-                            setSortOrder("newest");
-                            toast.success("Sorted newest first", { duration: 1500 });
-                          }}
-                        >
-                          {t("network_events.sort_newest")}
-                        </DropdownMenuCheckboxItem>
-                        <DropdownMenuCheckboxItem
-                          checked={sortOrder === "oldest"}
-                          onCheckedChange={() => {
-                            setSortOrder("oldest");
-                            toast.success("Sorted oldest first", { duration: 1500 });
-                          }}
-                        >
-                          {t("network_events.sort_oldest")}
-                        </DropdownMenuCheckboxItem>
-                        <DropdownMenuCheckboxItem
-                          checked={sortOrder === "type"}
-                          onCheckedChange={() => {
-                            setSortOrder("type");
-                            toast.success("Sorted by type", { duration: 1500 });
-                          }}
-                        >
-                          {t("network_events.sort_type")}
-                        </DropdownMenuCheckboxItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 gap-1"
-                        >
-                          <ListFilter className="h-3.5 w-3.5" />
-                          <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
-                            {t("network_events.limit_label")}
-                          </span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>
-                          {t("network_events.limit_label")}
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {LIMIT_OPTIONS.map((opt) => (
-                          <DropdownMenuCheckboxItem
-                            key={opt.value}
-                            checked={maxEvents === opt.value}
-                            onCheckedChange={() => {
-                              setMaxEvents(opt.value);
-                              toast.success(
-                                `Showing up to ${opt.value} events`,
-                                { duration: 1500 },
-                              );
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <Tabs value={activeTab} onValueChange={(v) => {
+                          setActiveTab(v);
+                          toast.success("Filtered events", { duration: 1500 });
+                        }}>
+                          <div className="flex items-center overflow-x-auto max-w-full">
+                            <TabsList className="min-w-0">
+                              <TabsTrigger value="all">
+                                {t("network_events.tab_all")}
+                              </TabsTrigger>
+                              <TabsTrigger value="bandChanges">
+                                <span className="hidden @sm/card:inline">
+                                  {t("network_events.tab_band_changes")}
+                                </span>
+                                <Radio className="@sm/card:hidden" />
+                              </TabsTrigger>
+                              <TabsTrigger value="networkMode">
+                                <span className="hidden @sm/card:inline">
+                                  {t("network_events.tab_network_mode")}
+                                </span>
+                                <Signal className="@sm/card:hidden" />
+                              </TabsTrigger>
+                              <TabsTrigger value="dataConnection">
+                                <span className="hidden @sm/card:inline">
+                                  {t("network_events.tab_data_connection")}
+                                </span>
+                                <Wifi className="@sm/card:hidden" />
+                              </TabsTrigger>
+                            </TabsList>
+                          </div>
+                        <div className="flex items-center gap-2 sm:ml-auto">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 gap-1"
+                              >
+                                <ArrowUpDown className="h-3.5 w-3.5" />
+                                <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
+                                  {t("network_events.sort_label")}
+                                </span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel>
+                                {t("network_events.sort_label")}
+                              </DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuCheckboxItem
+                                checked={sortOrder === "newest"}
+                                onCheckedChange={() => {
+                                  setSortOrder("newest");
+                                  toast.success("Sorted newest first", { duration: 1500 });
+                                }}
+                              >
+                                {t("network_events.sort_newest")}
+                              </DropdownMenuCheckboxItem>
+                              <DropdownMenuCheckboxItem
+                                checked={sortOrder === "oldest"}
+                                onCheckedChange={() => {
+                                  setSortOrder("oldest");
+                                  toast.success("Sorted oldest first", { duration: 1500 });
+                                }}
+                              >
+                                {t("network_events.sort_oldest")}
+                              </DropdownMenuCheckboxItem>
+                              <DropdownMenuCheckboxItem
+                                checked={sortOrder === "type"}
+                                onCheckedChange={() => {
+                                  setSortOrder("type");
+                                  toast.success("Sorted by type", { duration: 1500 });
+                                }}
+                              >
+                                {t("network_events.sort_type")}
+                              </DropdownMenuCheckboxItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 gap-1"
+                              >
+                                <ListFilter className="h-3.5 w-3.5" />
+                                <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
+                                  {t("network_events.limit_label")}
+                                </span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel>
+                                {t("network_events.limit_label")}
+                              </DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              {LIMIT_OPTIONS.map((opt) => (
+                                <DropdownMenuCheckboxItem
+                                  key={opt.value}
+                                  checked={maxEvents === opt.value}
+                                  onCheckedChange={() => {
+                                    setMaxEvents(opt.value);
+                                    toast.success(
+                                      `Showing up to ${opt.value} events`,
+                                      { duration: 1500 },
+                                    );
+                                  }}
+                                >
+                                  {opt.label}
+                                </DropdownMenuCheckboxItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1"
+                            onClick={() => {
+                              refresh();
+                              toast.success("Events refreshed", { duration: 2500 });
                             }}
+                            disabled={isRefreshing || !monitoringEnabled}
                           >
-                            {opt.label}
-                          </DropdownMenuCheckboxItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 gap-1"
-                      onClick={() => {
-                        refresh();
-                        toast.success("Events refreshed", { duration: 2500 });
-                      }}
-                      disabled={isRefreshing || !monitoringEnabled}
-                    >
-                      <RefreshCw
-                        className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
-                      />
-                      <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
-                        {t("network_events.refresh_button")}
-                      </span>
-                    </Button>
-                  </div>
-                </div>
+                            <RefreshCw
+                              className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
+                            />
+                            <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
+                              {t("network_events.refresh_button")}
+                            </span>
+                          </Button>
+                        </div>
 
                 {error && (
                   <Alert variant="destructive" className="my-4">
@@ -495,7 +496,6 @@ const NetworkEventsCard = () => {
               </Tabs>
             </div>
           </div>
-        </div>
       </CardContent>
     </Card>
   );
