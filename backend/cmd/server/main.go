@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -45,6 +46,24 @@ func main() {
 
 	// Start Background Watchdog Daemon (monitors connectivity natively)
 	watchdog := daemon.NewWatchdog("1.1.1.1", 30*time.Second, 3)
+	watchdog.SetRecoveryFunc(func(fails int) {
+		// Tiered recovery:
+		//  - fails >= 3: soft radio reset via AT+CFUN=0/1 (no reboot, keeps session)
+		//  - fails >= 8: hard reboot (radio reset did not help, ~4 min offline)
+		log.Printf("[Watchdog] RECOVERY: consecutive fails=%d -> %s", fails,
+			map[bool]string{true: "HARD REBOOT", false: "soft radio reset (AT+CFUN=0/1)"}[fails >= 8])
+		if fails >= 8 {
+			exec.Command("/bin/sh", "-c", "sync; (sleep 2; busybox reboot -f) >/dev/null 2>&1 &").Start()
+			return
+		}
+		// SOFT: AT+CFUN=0 then AT+CFUN=1 with a short delay — re-registers the
+		// radio and typically regains IP without a full reboot.
+		if _, err := atClient.Exec("AT+CFUN=0"); err == nil {
+			time.Sleep(3 * time.Second)
+			atClient.Exec("AT+CFUN=1")
+			time.Sleep(5 * time.Second)
+		}
+	})
 	watchdog.Start()
 	log.Println("[Daemon] Background Watchdog started (30s interval, target 1.1.1.1)")
 

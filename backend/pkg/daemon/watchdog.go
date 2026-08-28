@@ -30,6 +30,11 @@ type Watchdog struct {
 	mu            sync.Mutex
 	status        WatchdogStatus
 	pingFunc      func(host string) bool
+
+	// recoveryFunc is invoked when the fail threshold is crossed. The parent
+	// (cmd/server) wires this to real modem recovery: Tier-1 radio reset via
+	// AT+CFUN, Tier-2 hard reboot. Nil recoveryFunc = no-op (old behavior).
+	recoveryFunc func(fails int)
 }
 
 func NewWatchdog(targetHost string, interval time.Duration, failThreshold int) *Watchdog {
@@ -57,6 +62,14 @@ func NewWatchdog(targetHost string, interval time.Duration, failThreshold int) *
 	}
 	w.pingFunc = w.defaultPing
 	return w
+}
+
+// SetRecoveryFunc wires a real recovery action (radio reset / reboot) that
+// runs when the fail threshold is crossed. Call this before Start().
+func (w *Watchdog) SetRecoveryFunc(fn func(fails int)) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.recoveryFunc = fn
 }
 
 func (w *Watchdog) defaultPing(host string) bool {
@@ -123,6 +136,9 @@ func (w *Watchdog) CheckOnce() {
 			w.status.ActionTaken = "recovery_triggered"
 			log.Printf("[Watchdog] ALERT: Connection lost! Recovery threshold reached (%d consecutive fails)",
 				w.status.ConsecutiveFails)
+			if w.recoveryFunc != nil {
+				go w.recoveryFunc(w.status.ConsecutiveFails)
+			}
 		}
 	}
 
