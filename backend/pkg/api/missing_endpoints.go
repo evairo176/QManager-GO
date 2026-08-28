@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -389,6 +390,36 @@ func (s *Server) HandleScenarioActivate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// SECURITY: strict input validation before any value reaches an AT command.
+	// lte/nsa/sa band strings may only contain band chars; mode is mapped from a
+	// fixed enum. Without this, a malicious body could inject additional AT
+	// commands (e.g. ";AT+CFUN=0") that bypass the send_command blocklist and
+	// rate limit (bug found in 2026-08-29 audit).
+	mode := strings.ToUpper(strings.TrimSpace(req.Mode))
+	switch mode {
+	case "", "AUTO", "2G", "3G", "4G", "5G", "LTE", "NR":
+		// allowed
+	default:
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "invalid_mode", "detail": "mode must be AUTO/2G/3G/4G/5G/LTE/NR"})
+		return
+	}
+	bandRe := regexp.MustCompile(`^[0-9,:-]*$`)
+	for field, val := range map[string]string{"lte_bands": req.LteBands, "nsa_nr_bands": req.NsaBands, "sa_nr_bands": req.SaBands} {
+		if val != "" && !bandRe.MatchString(val) {
+			_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "invalid_bands", "detail": field + " may only contain digits, commas, colons and dashes"})
+			return
+		}
+	}
+
+	// Scenario IDs are persisted verbatim to the active-scenario marker file —
+	// keep them to a safe charset so a malicious id can't smuggle path-like
+	// content or break the marker file format.
+	idRe := regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
+	if !idRe.MatchString(req.ID) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "invalid_id", "detail": "Scenario id may only contain letters, digits, dot, dash and underscore"})
+		return
+	}
+
 	// Resolve config: custom scenarios carry it in the body; for built-ins the
 	// commands are sent with the marker only (empty bands = auto).
 	conf := map[string]any{
@@ -424,9 +455,9 @@ func (s *Server) HandleScenarioActivate(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Best-effort AT application — never fail the request on modem errors.
-	mode, _ := conf["atModeValue"].(string)
-	if mode != "" && mode != "AUTO" {
-		_, _ = s.atClient.Exec(fmt.Sprintf(`AT+QNWPREFCFG="mode_pref",%s`, mode))
+	applyMode, _ := conf["atModeValue"].(string)
+	if applyMode != "" && applyMode != "AUTO" {
+		_, _ = s.atClient.Exec(fmt.Sprintf(`AT+QNWPREFCFG="mode_pref",%s`, applyMode))
 	}
 	lte, _ := conf["lte_bands"].(string)
 	if lte != "" {
