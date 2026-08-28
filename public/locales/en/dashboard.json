@@ -177,5 +177,14 @@
     "title": "Recent Activities",
     "empty_title": "No Events",
     "empty_description": "No recent network events detected. Your device is likely stable and not experiencing any significant changes in network conditions."
+  },
+  "storage": {
+    "title": "Storage",
+    "high_usage": "Storage almost full",
+    "refresh": "Refresh storage",
+    "legend_low": "Low (<75%)",
+    "legend_medium": "Medium (75-90%)",
+    "legend_high": "High (>90%)",
+    "empty": "No storage data available"
   }
 }

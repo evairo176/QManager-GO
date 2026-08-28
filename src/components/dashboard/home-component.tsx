@@ -17,6 +17,7 @@ import { SignalHistoryComponent } from "./signal-history";
 import RecentActivitiesComponent from "./recent-activities";
 import DeviceMetricsComponent from "./device-metrics";
 import LiveLatencyComponent from "./live-latency";
+import { StorageCard } from "./storage-card";
 
 
 const HomeComponent = () => {
@@ -144,6 +145,10 @@ const HomeComponent = () => {
 
       <div className="col-span-full">
         <SignalHistoryComponent />
+      </div>
+
+      <div className="col-span-full">
+        <StorageCard />
       </div>
     </div>
   );
