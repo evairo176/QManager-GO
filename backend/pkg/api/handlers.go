@@ -205,6 +205,24 @@ func (s *Server) HandleFetchData(w http.ResponseWriter, r *http.Request) {
 					conn["avg_latency_ms"] = math.Round(sum/float64(len(latHistory))*10) / 10
 				}
 			}
+
+			// Enrich with watchcat live state for the watchdog status card.
+			// Frontend (watchdog-status-card.tsx) reads modemStatus.watchcat
+			// (from fetch_data.sh), NOT /monitoring/watchdog.sh — without this
+			// the card stays in 'Starting up' forever.
+			if wc := readInternalWatchdogStatus(); len(wc) > 0 {
+				status["watchcat"] = map[string]interface{}{
+					"enabled":             wc["enabled"],
+					"state":               wc["state"],
+					"current_tier":        wc["current_tier"],
+					"failure_count":       wc["failure_count"],
+					"last_recovery_time":  wc["last_recovery_time"],
+					"last_recovery_tier":  wc["last_recovery_tier"],
+					"total_recoveries":    wc["total_recoveries"],
+					"cooldown_remaining":  wc["cooldown_remaining"],
+					"reboots_this_hour":   wc["reboots_this_hour"],
+				}
+			}
 			payload, _ := json.Marshal(status)
 			_, _ = w.Write(payload)
 			return
