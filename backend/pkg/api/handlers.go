@@ -23,122 +23,122 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	loginLimiter := NewIPRateLimiter(0.1, 5)   // 5 attempts burst, 1 refill per 10s
 	atCmdLimiter := NewIPRateLimiter(10.0, 20) // 10 req/s, burst 20
 
-	// Auth Routes
+	// Auth Routes (public — cookie-based session, login is rate-limited)
 	mux.HandleFunc("/cgi-bin/quecmanager/auth/login.sh", RateLimitMiddleware(loginLimiter, s.HandleAuthLogin))
 	mux.HandleFunc("/cgi-bin/quecmanager/auth/logout.sh", s.HandleAuthLogout)
 	mux.HandleFunc("/cgi-bin/quecmanager/auth/check.sh", s.HandleAuthCheck)
 
-	// Modem & Core API Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/fetch_data.sh", s.HandleFetchData)
-	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/send_command.sh", RateLimitMiddleware(atCmdLimiter, s.HandleSendCommand))
-	mux.HandleFunc("/cgi-bin/quecmanager/bands/current.sh", s.HandleBandsCurrent)
-	mux.HandleFunc("/cgi-bin/quecmanager/bands/lock.sh", s.HandleBandsLock)
-	mux.HandleFunc("/cgi-bin/quecmanager/bands/failover_status.sh", s.HandleBandsFailoverStatus)
-	mux.HandleFunc("/cgi-bin/quecmanager/bands/failover_toggle.sh", s.HandleBandsFailoverToggle)
-	mux.HandleFunc("/cgi-bin/quecmanager/cellular/sms.sh", s.HandleSMS)
+	// Modem & Core API Routes — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/fetch_data.sh", RequireAuth(s.HandleFetchData))
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/send_command.sh", RequireAuth(RateLimitMiddleware(atCmdLimiter, s.HandleSendCommand)))
+	mux.HandleFunc("/cgi-bin/quecmanager/bands/current.sh", RequireAuth(s.HandleBandsCurrent))
+	mux.HandleFunc("/cgi-bin/quecmanager/bands/lock.sh", RequireAuth(s.HandleBandsLock))
+	mux.HandleFunc("/cgi-bin/quecmanager/bands/failover_status.sh", RequireAuth(s.HandleBandsFailoverStatus))
+	mux.HandleFunc("/cgi-bin/quecmanager/bands/failover_toggle.sh", RequireAuth(s.HandleBandsFailoverToggle))
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/sms.sh", RequireAuth(s.HandleSMS))
 
-	// Cellular & Network Settings Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/cellular/radio_details.sh", s.HandleRadioDetails)
-	mux.HandleFunc("/cgi-bin/quecmanager/cellular/settings.sh", s.HandleCellularSettings)
-	mux.HandleFunc("/cgi-bin/quecmanager/cellular/imei.sh", s.HandleIMEISettings)
-	mux.HandleFunc("/cgi-bin/quecmanager/cellular/network_priority.sh", s.HandleNetworkPriority)
-	mux.HandleFunc("/cgi-bin/quecmanager/network/ttl.sh", s.HandleTTLSettings)
+	// Cellular & Network Settings Routes — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/radio_details.sh", RequireAuth(s.HandleRadioDetails))
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/settings.sh", RequireAuth(s.HandleCellularSettings))
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/imei.sh", RequireAuth(s.HandleIMEISettings))
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/network_priority.sh", RequireAuth(s.HandleNetworkPriority))
+	mux.HandleFunc("/cgi-bin/quecmanager/network/ttl.sh", RequireAuth(s.HandleTTLSettings))
 
-	// Advanced Features Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/network/data_used.sh", s.HandleDataUsed)
-	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/cell_scan_status.sh", s.HandleCellScanStatus)
+	// Advanced Features Routes — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/network/data_used.sh", RequireAuth(s.HandleDataUsed))
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/cell_scan_status.sh", RequireAuth(s.HandleCellScanStatus))
 
-	// History Charts Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/fetch_signal_history.sh", s.HandleFetchSignalHistory)
-	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/fetch_ping_history.sh", s.HandleFetchPingHistory)
-	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/fetch_events.sh", s.HandleFetchEvents)
+	// History Charts Routes — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/fetch_signal_history.sh", RequireAuth(s.HandleFetchSignalHistory))
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/fetch_ping_history.sh", RequireAuth(s.HandleFetchPingHistory))
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/fetch_events.sh", RequireAuth(s.HandleFetchEvents))
 
-	// System & Reboot Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/system/reboot.sh", s.HandleSystemReboot)
-	mux.HandleFunc("/cgi-bin/quecmanager/system/logs.sh", s.HandleSystemLogs)
-	mux.HandleFunc("/cgi-bin/quecmanager/system/ipa_offload.sh", s.HandleIPAOffload)
-	mux.HandleFunc("/cgi-bin/quecmanager/system/realtime.sh", s.HandleRealtime)
-	mux.HandleFunc("/cgi-bin/quecmanager/system/storage.sh", s.HandleStorage)
+	// System & Reboot Routes — Auth Required (reboot.sh without auth = instant DoS)
+	mux.HandleFunc("/cgi-bin/quecmanager/system/reboot.sh", RequireAuth(s.HandleSystemReboot))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/logs.sh", RequireAuth(s.HandleSystemLogs))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/ipa_offload.sh", RequireAuth(s.HandleIPAOffload))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/realtime.sh", RequireAuth(s.HandleRealtime))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/storage.sh", RequireAuth(s.HandleStorage))
 	mux.HandleFunc("/cgi-bin/quecmanager/public/overview.sh", s.HandlePublicOverview)
 
-	// APN & MBN Management Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/cellular/apn.sh", s.HandleAPN)
-	mux.HandleFunc("/cgi-bin/quecmanager/cellular/mbn.sh", s.HandleMBN)
+	// APN & MBN Management Routes — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/apn.sh", RequireAuth(s.HandleAPN))
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/mbn.sh", RequireAuth(s.HandleMBN))
 
-	// Tower & Frequency Locking Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/tower/status.sh", s.HandleTowerStatus)
-	mux.HandleFunc("/cgi-bin/quecmanager/tower/lock.sh", s.HandleTowerLock)
-	mux.HandleFunc("/cgi-bin/quecmanager/tower/settings.sh", s.HandleTowerSettings)
-	mux.HandleFunc("/cgi-bin/quecmanager/tower/schedule.sh", s.HandleTowerSchedule)
-	mux.HandleFunc("/cgi-bin/quecmanager/frequency/status.sh", s.HandleFrequencyStatus)
-	mux.HandleFunc("/cgi-bin/quecmanager/frequency/lock.sh", s.HandleFrequencyLock)
+	// Tower & Frequency Locking Routes — Auth Required (write = destructive)
+	mux.HandleFunc("/cgi-bin/quecmanager/tower/status.sh", RequireAuth(s.HandleTowerStatus))
+	mux.HandleFunc("/cgi-bin/quecmanager/tower/lock.sh", RequireAuth(s.HandleTowerLock))
+	mux.HandleFunc("/cgi-bin/quecmanager/tower/settings.sh", RequireAuth(s.HandleTowerSettings))
+	mux.HandleFunc("/cgi-bin/quecmanager/tower/schedule.sh", RequireAuth(s.HandleTowerSchedule))
+	mux.HandleFunc("/cgi-bin/quecmanager/frequency/status.sh", RequireAuth(s.HandleFrequencyStatus))
+	mux.HandleFunc("/cgi-bin/quecmanager/frequency/lock.sh", RequireAuth(s.HandleFrequencyLock))
 
-	// SIM Profiles & Connection Scenarios Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/profiles/list.sh", s.HandleProfilesList)
-	mux.HandleFunc("/cgi-bin/quecmanager/profiles/get.sh", s.HandleProfilesGet)
-	mux.HandleFunc("/cgi-bin/quecmanager/profiles/save.sh", s.HandleProfilesSave)
-	mux.HandleFunc("/cgi-bin/quecmanager/profiles/delete.sh", s.HandleProfilesDelete)
-	mux.HandleFunc("/cgi-bin/quecmanager/profiles/apply.sh", s.HandleProfilesApply)
-	mux.HandleFunc("/cgi-bin/quecmanager/profiles/current_settings.sh", s.HandleProfilesCurrentSettings)
-	mux.HandleFunc("/cgi-bin/quecmanager/scenarios/list.sh", s.HandleScenariosList)
+	// SIM Profiles & Connection Scenarios Routes — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/profiles/list.sh", RequireAuth(s.HandleProfilesList))
+	mux.HandleFunc("/cgi-bin/quecmanager/profiles/get.sh", RequireAuth(s.HandleProfilesGet))
+	mux.HandleFunc("/cgi-bin/quecmanager/profiles/save.sh", RequireAuth(s.HandleProfilesSave))
+	mux.HandleFunc("/cgi-bin/quecmanager/profiles/delete.sh", RequireAuth(s.HandleProfilesDelete))
+	mux.HandleFunc("/cgi-bin/quecmanager/profiles/apply.sh", RequireAuth(s.HandleProfilesApply))
+	mux.HandleFunc("/cgi-bin/quecmanager/profiles/current_settings.sh", RequireAuth(s.HandleProfilesCurrentSettings))
+	mux.HandleFunc("/cgi-bin/quecmanager/scenarios/list.sh", RequireAuth(s.HandleScenariosList))
 
-	// Monitoring & Watchdog Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/monitoring/alerts.sh", s.HandleMonitoringAlerts)
-	mux.HandleFunc("/cgi-bin/quecmanager/monitoring/watchdog.sh", s.HandleMonitoringWatchdog)
-	mux.HandleFunc("/cgi-bin/quecmanager/vpn/netbird.sh", s.HandleNetBird)
-	mux.HandleFunc("/cgi-bin/quecmanager/vpn/tailscale.sh", s.HandleVPNTailscale)
+	// Monitoring & Watchdog Routes — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/monitoring/alerts.sh", RequireAuth(s.HandleMonitoringAlerts))
+	mux.HandleFunc("/cgi-bin/quecmanager/monitoring/watchdog.sh", RequireAuth(s.HandleMonitoringWatchdog))
+	mux.HandleFunc("/cgi-bin/quecmanager/vpn/netbird.sh", RequireAuth(s.HandleNetBird))
+	mux.HandleFunc("/cgi-bin/quecmanager/vpn/tailscale.sh", RequireAuth(s.HandleVPNTailscale))
 
-	// System Health Check & Language Packs Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/system/health-check/status.sh", s.HandleHealthCheckStatus)
-	mux.HandleFunc("/cgi-bin/quecmanager/system/health-check/run.sh", s.HandleHealthCheckRun)
-	mux.HandleFunc("/cgi-bin/quecmanager/system/language-packs/list.sh", s.HandleLanguagePacksList)
-	mux.HandleFunc("/cgi-bin/quecmanager/system/language-packs/install.sh", s.HandleLanguagePacksInstall)
-	// Device & System Metadata Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/device/about.sh", s.HandleAboutDevice)
-	mux.HandleFunc("/cgi-bin/quecmanager/system/settings.sh", s.HandleSystemSettings)
-	mux.HandleFunc("/cgi-bin/quecmanager/cellular/sim_slot.sh", s.HandleSIMSlot)
+	// System Health Check & Language Packs Routes — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/system/health-check/status.sh", RequireAuth(s.HandleHealthCheckStatus))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/health-check/run.sh", RequireAuth(s.HandleHealthCheckRun))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/language-packs/list.sh", RequireAuth(s.HandleLanguagePacksList))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/language-packs/install.sh", RequireAuth(s.HandleLanguagePacksInstall))
+	// Device & System Metadata Routes — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/device/about.sh", RequireAuth(s.HandleAboutDevice))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/settings.sh", RequireAuth(s.HandleSystemSettings))
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/sim_slot.sh", RequireAuth(s.HandleSIMSlot))
 
 	mux.HandleFunc("/cgi-bin/quecmanager/public/hostname.sh", s.HandleHostname)
 
-	// Network & Traffic Control Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/network/ethernet.sh", s.HandleEthernetStatus)
-	mux.HandleFunc("/cgi-bin/quecmanager/network/lan_config.sh", s.HandleLANConfig)
-	mux.HandleFunc("/cgi-bin/quecmanager/network/lan_devices.sh", s.HandleLANDevices)
-	mux.HandleFunc("/cgi-bin/quecmanager/network/dns.sh", s.HandleDNS)
-	mux.HandleFunc("/cgi-bin/quecmanager/network/mtu.sh", s.HandleMTU)
-	mux.HandleFunc("/cgi-bin/quecmanager/network/ip_passthrough.sh", s.HandleIPPassthrough)
-	mux.HandleFunc("/cgi-bin/quecmanager/network/traffic_masquerade.sh", s.HandleTrafficMasquerade)
-	mux.HandleFunc("/cgi-bin/quecmanager/network/video_optimizer.sh", s.HandleVideoOptimizer)
+	// Network & Traffic Control Routes — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/network/ethernet.sh", RequireAuth(s.HandleEthernetStatus))
+	mux.HandleFunc("/cgi-bin/quecmanager/network/lan_config.sh", RequireAuth(s.HandleLANConfig))
+	mux.HandleFunc("/cgi-bin/quecmanager/network/lan_devices.sh", RequireAuth(s.HandleLANDevices))
+	mux.HandleFunc("/cgi-bin/quecmanager/network/dns.sh", RequireAuth(s.HandleDNS))
+	mux.HandleFunc("/cgi-bin/quecmanager/network/mtu.sh", RequireAuth(s.HandleMTU))
+	mux.HandleFunc("/cgi-bin/quecmanager/network/ip_passthrough.sh", RequireAuth(s.HandleIPPassthrough))
+	mux.HandleFunc("/cgi-bin/quecmanager/network/traffic_masquerade.sh", RequireAuth(s.HandleTrafficMasquerade))
+	mux.HandleFunc("/cgi-bin/quecmanager/network/video_optimizer.sh", RequireAuth(s.HandleVideoOptimizer))
 
-	// Speedtest Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_check.sh", s.HandleSpeedtestCheck)
-	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_servers.sh", s.HandleSpeedtestServers)
-	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_start.sh", s.HandleSpeedtestStart)
-	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_status.sh", s.HandleSpeedtestStatus)
-	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest_check.sh", s.HandleSpeedtestCheck)
-	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest_servers.sh", s.HandleSpeedtestServers)
-	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest_start.sh", s.HandleSpeedtestStart)
-	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest_status.sh", s.HandleSpeedtestStatus)
+	// Speedtest Routes — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_check.sh", RequireAuth(s.HandleSpeedtestCheck))
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_servers.sh", RequireAuth(s.HandleSpeedtestServers))
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_start.sh", RequireAuth(s.HandleSpeedtestStart))
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/speedtest_status.sh", RequireAuth(s.HandleSpeedtestStatus))
+	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest_check.sh", RequireAuth(s.HandleSpeedtestCheck))
+	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest_servers.sh", RequireAuth(s.HandleSpeedtestServers))
+	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest_start.sh", RequireAuth(s.HandleSpeedtestStart))
+	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest_status.sh", RequireAuth(s.HandleSpeedtestStatus))
 
-	// System Management & Polling Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/system/ping_profile.sh", s.HandlePingProfile)
-	mux.HandleFunc("/cgi-bin/quecmanager/system/quality_thresholds.sh", s.HandleQualityThresholds)
-	mux.HandleFunc("/cgi-bin/quecmanager/system/adaptive_polling.sh", s.HandleAdaptivePolling)
-	mux.HandleFunc("/cgi-bin/quecmanager/cellular/sms_forwarding.sh", s.HandleSMSForwarding)
+	// System Management & Polling Routes — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/system/ping_profile.sh", RequireAuth(s.HandlePingProfile))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/quality_thresholds.sh", RequireAuth(s.HandleQualityThresholds))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/adaptive_polling.sh", RequireAuth(s.HandleAdaptivePolling))
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/sms_forwarding.sh", RequireAuth(s.HandleSMSForwarding))
 
-	// System Management & Update Routes
-	mux.HandleFunc("/cgi-bin/quecmanager/system/ssh_password.sh", s.HandleSSHPassword)
-	mux.HandleFunc("/cgi-bin/quecmanager/system/update.sh", s.HandleSoftwareUpdate)
-	mux.HandleFunc("/cgi-bin/quecmanager/system/pending_reboot.sh", s.HandlePendingReboot)
-	mux.HandleFunc("/cgi-bin/quecmanager/system/known_sims.sh", s.HandleKnownSims)
-	mux.HandleFunc("/cgi-bin/quecmanager/cellular/fplmn.sh", s.HandleFPLMN)
-	mux.HandleFunc("/cgi-bin/quecmanager/monitoring/bandwidth.sh", s.HandleBandwidthSettings)
-	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest.sh", s.HandleSpeedtestStart)
-	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/cell_scan_start.sh", s.HandleCellScanStart)
-	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/neighbour_scan_start.sh", s.HandleCellScanStart)
+	// System Management & Update Routes — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/system/ssh_password.sh", RequireAuth(s.HandleSSHPassword))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/update.sh", RequireAuth(s.HandleSoftwareUpdate))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/pending_reboot.sh", RequireAuth(s.HandlePendingReboot))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/known_sims.sh", RequireAuth(s.HandleKnownSims))
+	mux.HandleFunc("/cgi-bin/quecmanager/cellular/fplmn.sh", RequireAuth(s.HandleFPLMN))
+	mux.HandleFunc("/cgi-bin/quecmanager/monitoring/bandwidth.sh", RequireAuth(s.HandleBandwidthSettings))
+	mux.HandleFunc("/cgi-bin/quecmanager/network/speedtest.sh", RequireAuth(s.HandleSpeedtestStart))
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/cell_scan_start.sh", RequireAuth(s.HandleCellScanStart))
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/neighbour_scan_start.sh", RequireAuth(s.HandleCellScanStart))
 
-	// Real-Time Telemetry SSE Stream
-	mux.HandleFunc("/cgi-bin/quecmanager/api/stream/status", s.HandleSSEStream)
+	// Real-Time Telemetry SSE Stream — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/api/stream/status", RequireAuth(s.HandleSSEStream))
 }
 
 // HandleFetchData reads status from /tmp/qmanager_status.json or returns fallback

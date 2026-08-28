@@ -241,6 +241,40 @@ func (s *Server) HandleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"authenticated": true})
 }
 
+// isAuthenticated reports whether the request carries a valid session cookie.
+func isAuthenticated(r *http.Request) bool {
+	cookie, err := r.Cookie("qmanager_session")
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	globalSessions.mu.Lock()
+	expiry, exists := globalSessions.sessions[cookie.Value]
+	globalSessions.mu.Unlock()
+	return exists && time.Now().Before(expiry)
+}
+
+// RequireAuth wraps a HandlerFunc, rejecting unauthenticated requests with 401.
+// All QManager endpoints except auth/login, auth/check and the public health
+// endpoints must go through this middleware — without it anyone on the LAN can
+// execute raw AT commands (send_command.sh), reboot the modem (reboot.sh) or
+// read device data (sms.sh, imei.sh, profiles). This closes the zero-auth
+// remote code/DoS vector found in the 2026-08-29 audit.
+func RequireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !isAuthenticated(r) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "unauthorized",
+				"message": "Valid session required. Please log in.",
+			})
+			return
+		}
+		next(w, r)
+	}
+}
+
 func generateToken() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
