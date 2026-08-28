@@ -194,11 +194,15 @@ udevadm control --reload 2>/dev/null
 # /lib is read-only on Quectel rootfs - remount rw briefly to delete.
 mount -o remount,rw /
 rm -f /lib/systemd/system/cfunfix.service
+rm -f /lib/systemd/system/ipacm_perf.service        # binary /usr/bin/ipacm_perf missing (zombie)
+rm -f /lib/systemd/system/rc.unslung.service        # Entware init dupe - SSH is managed by systemd sshd
 rm -f /lib/systemd/system/multi-user.target.wants/cfunfix.service
 rm -f /lib/systemd/system/multi-user.target.wants/simplefirewall.service
 rm -f /lib/systemd/system/multi-user.target.wants/socat-*.service
 rm -f /lib/systemd/system/multi-user.target.wants/ttl-override.service
-rm -f /lib/systemd/system/install_simple*.service
+rm -f /lib/systemd/system/multi-user.target.wants/install_simple*.service
+rm -f /lib/systemd/system/multi-user.target.wants/ipacm_perf.service
+rm -f /lib/systemd/system/multi-user.target.wants/rc.unslung.service
 rm -f /lib/systemd/system/simplefirewall.service /lib/systemd/system/ttl-override.service
 rm -f /lib/systemd/system/socat-*.service
 rm -f /lib/systemd/system/install_simpleadmin.service
@@ -269,6 +273,8 @@ curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1/  # → 200
 ```
 
 > ⚠️ **Quectel cold-boot quirk**: on RM500Q/RM520N the full boot takes ~80s (`network.target` + QCMAP bring-up). SSH usually comes up in 1–2 min; `qmanager-core` may start ~80s after power-on even when enabled. That is normal — do not mistake it for a failed autostart. If you need web up sooner, use `After=basic.target` in the unit instead of `After=network.target` (see Step 2 note above).
+>
+> ⚠️ **`systemctl is-enabled` lies on Quectel**: it reports `disabled` for units whose wants symlink lives in `/lib` (it only reads `/etc` state). Ignore it — the boot-time authority is the wants symlink itself. Verify with `ls /lib/systemd/system/multi-user.target.wants/qmanager-*` + a reboot test, not `is-enabled`. Do NOT run `systemctl enable` after placing units in `/lib` — it duplicates the symlink into `/etc` (harmless but confusing) and then `is-enabled`/`is-active` read from there.
 
 ---
 
