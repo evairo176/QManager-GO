@@ -785,14 +785,16 @@ func (s *Server) HandleSMSForwarding(w http.ResponseWriter, r *http.Request) {
 func (s *Server) HandleEthernetStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	linkStatus := "connected"
-	speed := "1000 Mbps"
-	duplex := "full"
-	autoNeg := "on"
+	// Frontend contract (ethernet-card.tsx): expects link_status "up"|"down",
+	// poll loop latches on link_status === "up" && speed !== "Unknown".
+	linkStatus := "down"
+	speed := "Unknown"
+	duplex := "unknown"
+	autoNeg := "unknown"
 
 	if data, err := os.ReadFile("/sys/class/net/eth0/operstate"); err == nil {
-		if strings.TrimSpace(string(data)) == "down" {
-			linkStatus = "disconnected"
+		if strings.TrimSpace(string(data)) == "up" {
+			linkStatus = "up"
 		}
 	}
 
@@ -800,6 +802,12 @@ func (s *Server) HandleEthernetStatus(w http.ResponseWriter, r *http.Request) {
 		spdStr := strings.TrimSpace(string(data))
 		if spdStr != "" && spdStr != "-1" {
 			speed = spdStr + " Mbps"
+		}
+	}
+
+	if data, err := os.ReadFile("/sys/class/net/eth0/duplex"); err == nil {
+		if d := strings.TrimSpace(string(data)); d != "" {
+			duplex = d
 		}
 	}
 

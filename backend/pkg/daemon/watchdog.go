@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -103,7 +104,11 @@ func (w *Watchdog) CheckOnce() {
 	now := time.Now().Unix()
 	w.status.LastCheckTime = now
 
+	start := time.Now()
 	success := w.pingFunc(w.targetHost)
+	latencyMs := float64(time.Since(start).Microseconds()) / 1000.0
+	w.recordPingHistory(now, success, latencyMs)
+
 	if success {
 		w.status.IsConnected = true
 		w.status.ConsecutiveFails = 0
@@ -122,6 +127,52 @@ func (w *Watchdog) CheckOnce() {
 	}
 
 	w.writeStatusFile()
+}
+
+// recordPingHistory appends one NDJSON line to /tmp/qmanager_ping_history.json.
+// Contract with frontend (use-latency-history.ts, PingHistoryEntry):
+//   {"ts":..., "lat":..., "avg":..., "min":..., "max":..., "loss":..., "jit":...}
+// Keep the last 720 entries (~6h at the 30s watchdog cadence).
+func (w *Watchdog) recordPingHistory(ts int64, success bool, latencyMs float64) {
+	type pingEntry struct {
+		Ts   int64    `json:"ts"`
+		Lat  *float64 `json:"lat"`
+		Avg  *float64 `json:"avg"`
+		Min  *float64 `json:"min"`
+		Max  *float64 `json:"max"`
+		Loss int      `json:"loss"`
+		Jit  *float64 `json:"jit"`
+	}
+
+	var lat *float64
+	if success {
+		lat = &latencyMs
+	}
+	loss := 0
+	if !success {
+		loss = 100
+	}
+	e := pingEntry{Ts: ts, Lat: lat, Avg: lat, Min: lat, Max: lat, Loss: loss, Jit: lat}
+	lineBytes, err := json.Marshal(e)
+	if err != nil {
+		return
+	}
+
+	histFile := "/tmp/qmanager_ping_history.json"
+	var existing []string
+	if data, err := os.ReadFile(histFile); err == nil {
+		for _, l := range strings.Split(string(data), "\n") {
+			l = strings.TrimSpace(l)
+			if l != "" {
+				existing = append(existing, l)
+			}
+		}
+	}
+	existing = append(existing, string(lineBytes))
+	if len(existing) > 720 {
+		existing = existing[len(existing)-720:]
+	}
+	_ = os.WriteFile(histFile, []byte(strings.Join(existing, "\n")+"\n"), 0644)
 }
 
 func (w *Watchdog) GetStatus() WatchdogStatus {
