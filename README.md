@@ -185,9 +185,28 @@ rm -f /usrdata/root/bin/simplepasswd /usrdata/root/bin/htpasswd
 
 # Broken cron referencing a removed watchcat script
 sed -i '/watchcat.sh/d' /etc/crontab
+
+# Stale udev rule pointing at a removed helper (spams boot errors)
+rm -f /etc/udev/rules.d/99-qmanager-smd11.rules
+udevadm control --reload 2>/dev/null
+
+# Purge leftover systemd units for removed helpers.
+# /lib is read-only on Quectel rootfs - remount rw briefly to delete.
+mount -o remount,rw /
+rm -f /lib/systemd/system/cfunfix.service
+rm -f /lib/systemd/system/multi-user.target.wants/cfunfix.service
+rm -f /lib/systemd/system/multi-user.target.wants/simplefirewall.service
+rm -f /lib/systemd/system/multi-user.target.wants/socat-*.service
+rm -f /lib/systemd/system/multi-user.target.wants/ttl-override.service
+rm -f /lib/systemd/system/install_simple*.service
+rm -f /lib/systemd/system/simplefirewall.service /lib/systemd/system/ttl-override.service
+rm -f /lib/systemd/system/socat-*.service
+rm -f /lib/systemd/system/install_simpleadmin.service
+systemctl daemon-reload
+mount -o remount,ro /
 ```
 
-> ⚠️ Unit files under `/lib/systemd/system/` can NOT be deleted (rootfs is read-only on Quectel modems) — but once disabled they never start again. Do not attempt to `rm -f` them.
+> ⚠️ Unit files under `/lib/systemd/system/` live on the read-only rootfs — but you CAN delete them by briefly remounting `rw` (as shown above), then back to `ro`. This is the only way to truly purge legacy SimpleAdmin/socat units; `systemctl disable` alone leaves the wants symlink in `/lib` and systemd keeps trying to start it each boot (noisy failures).
 
 ### 4. Harden `www-data` Sudoers (Kill Privilege Escalation)
 
