@@ -72,12 +72,24 @@ func (s *Server) HandleAPN(w http.ResponseWriter, r *http.Request) {
 							activeCid = cid
 						}
 
-						cids = append(cids, map[string]interface{}{
-							"cid":         cid,
-							"apn":         apnStr,
-							"apn_type":    apnType,
-							"is_internet": cid == 1,
-						})
+						// Dedup: modems often emit the same CID multiple times
+						// (multi-PDP: IPV4V6/IPV4/IPV6 lines share a cid). Keep the
+						// first occurrence so the APN list doesn't show dupes.
+						dup := false
+						for _, existing := range cids {
+							if eid, _ := existing["cid"].(int); eid == cid {
+								dup = true
+								break
+							}
+						}
+						if !dup {
+							cids = append(cids, map[string]interface{}{
+								"cid":         cid,
+								"apn":         apnStr,
+								"apn_type":    apnType,
+								"is_internet": cid == 1,
+							})
+						}
 					}
 				}
 			}

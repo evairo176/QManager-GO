@@ -58,6 +58,28 @@ func (m *Manager) StartTest(targetURL string) error {
 	m.isRunning = true
 	m.lastError = ""
 
+	// Hard watchdog: guarantee the run finishes even if an underlying HTTP
+	// request hangs past its own timeouts (client.Do + io.Copy can block
+	// indefinitely on a stalled cellular link). Without this the status stays
+	// "running" forever and the Speedtest page shows an eternal spinner.
+	// 60s covers ping (5x~1s) + download/upload (5MB/2MB at modem speeds) with
+	// huge margin; on failure we mark the run as timed out instead of hanging.
+	go func() {
+		time.Sleep(60 * time.Second)
+		m.mu.Lock()
+		if m.isRunning {
+			m.currentStatus = map[string]interface{}{
+				"status":  "error",
+				"phase":   "complete",
+				"error":   "timed_out",
+				"message": "Speedtest timed out (cellular link stalled). Please retry.",
+			}
+			m.lastError = "timed_out"
+			m.isRunning = false
+		}
+		m.mu.Unlock()
+	}()
+
 	startData := map[string]interface{}{
 		"type":      "testStart",
 		"timestamp": time.Now().Format(time.RFC3339),

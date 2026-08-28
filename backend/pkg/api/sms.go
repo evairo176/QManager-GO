@@ -111,7 +111,7 @@ func (s *Server) handleGetSMS(w http.ResponseWriter, r *http.Request) {
 //	Date/Time: 08/26/26 14:21:52
 //	<message body lines...>
 func parseSmsToolOutput(raw string) []SMSItem {
-	var items []SMSItem
+	items := []SMSItem{} // always non-nil — frontend contract expects an array, never null
 	scanner := bufio.NewScanner(strings.NewReader(raw))
 	var cur *SMSItem
 	var body strings.Builder

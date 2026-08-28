@@ -241,6 +241,11 @@ func (s *Server) HandleVPNTailscale(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
 

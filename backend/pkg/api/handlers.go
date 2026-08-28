@@ -612,11 +612,11 @@ func (s *Server) HandleVideoOptimizer(w http.ResponseWriter, r *http.Request) {
 // HandleSSHPassword updates the system SSH password
 func (s *Server) HandleSSHPassword(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if r.Method == http.MethodPost {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "SSH password updated successfully"})
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "SSH password updated successfully"})
 }
 
 // HandleSoftwareUpdate manages OTA & software update checks
@@ -640,6 +640,11 @@ func (s *Server) HandleSoftwareUpdate(w http.ResponseWriter, r *http.Request) {
 // then clears the flag. FE polls cell_scan_status.sh while scanning.
 func (s *Server) HandleCellScanStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
 
 	if fileExists("/tmp/qmanager_long_running") {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{

@@ -25,8 +25,17 @@ func (s *Server) HandleSystemReboot(w http.ResponseWriter, r *http.Request) {
 
 	var req RebootRequest
 	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	// Safety: never default to reboot. A bare {} (or missing action) must be
+	// rejected — otherwise any unauthenticated/accidental POST reboots the
+	// modem. Frontend always sends an explicit action (reboot|reconnect|...).
 	if req.Action == "" {
-		req.Action = "reboot"
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "missing_action",
+			"message": "Request body must include an explicit action field.",
+		})
+		return
 	}
 
 	if req.Action == "reconnect" {
@@ -35,6 +44,15 @@ func (s *Server) HandleSystemReboot(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"detail":  "Network reconnect initiated",
+		})
+		return
+	}
+
+	if req.Action != "reboot" {
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "unknown_action",
+			"message": "Supported actions: reboot, reconnect.",
 		})
 		return
 	}
@@ -262,6 +280,12 @@ func (s *Server) HandleSpeedtestServers(w http.ResponseWriter, r *http.Request) 
 // HandleSpeedtestStart initiates a background speed test run
 func (s *Server) HandleSpeedtestStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
 	mgr := speedtest.GetManager()
 	err := mgr.StartTest("http://speed.cloudflare.com")
 	if err != nil {
