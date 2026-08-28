@@ -1,10 +1,12 @@
 package api
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 
 	"qmanager-backend/pkg/at"
@@ -139,6 +141,39 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Real-Time Telemetry SSE Stream — Auth Required
 	mux.HandleFunc("/cgi-bin/quecmanager/api/stream/status", RequireAuth(s.HandleSSEStream))
+
+	// Config Backup — Auth Required (collect/apply/apply_status/apply_cancel)
+	mux.HandleFunc("/cgi-bin/quecmanager/system/config-backup/collect.sh", RequireAuth(s.HandleConfigBackupCollect))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/config-backup/apply.sh", RequireAuth(s.HandleConfigBackupApply))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/config-backup/apply_status.sh", RequireAuth(s.HandleConfigBackupApplyStatus))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/config-backup/apply_cancel.sh", RequireAuth(s.HandleConfigBackupApplyCancel))
+
+	// Connection Scenarios CRUD — Auth Required (list.sh already registered)
+	mux.HandleFunc("/cgi-bin/quecmanager/scenarios/activate.sh", RequireAuth(s.HandleScenarioActivate))
+	mux.HandleFunc("/cgi-bin/quecmanager/scenarios/active.sh", RequireAuth(s.HandleScenarioActive))
+	mux.HandleFunc("/cgi-bin/quecmanager/scenarios/save.sh", RequireAuth(s.HandleScenarioSave))
+	mux.HandleFunc("/cgi-bin/quecmanager/scenarios/delete.sh", RequireAuth(s.HandleScenarioDelete))
+
+	// Language Packs status/cancel/remove — Auth Required (list.sh + install.sh already registered)
+	mux.HandleFunc("/cgi-bin/quecmanager/system/language-packs/install_status.sh", RequireAuth(s.HandleLanguagePacksInstallStatus))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/language-packs/install_cancel.sh", RequireAuth(s.HandleLanguagePacksInstallCancel))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/language-packs/remove.sh", RequireAuth(s.HandleLanguagePacksRemove))
+
+	// Profiles deactivate + apply_status — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/profiles/deactivate.sh", RequireAuth(s.HandleProfilesDeactivate))
+	mux.HandleFunc("/cgi-bin/quecmanager/profiles/apply_status.sh", RequireAuth(s.HandleProfilesApplyStatus))
+
+	// Tower failover status alias — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/tower/failover_status.sh", RequireAuth(s.HandleTowerFailoverStatus))
+
+	// Neighbour scan status alias — Auth Required
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/neighbour_scan_status.sh", RequireAuth(s.HandleNeighbourScanStatus))
+
+	// Missing Endpoints — Auth Required (previously 404: dashboard password
+	// change, modem network reconnect, diagnostics capture)
+	mux.HandleFunc("/cgi-bin/quecmanager/auth/password.sh", RequireAuth(s.HandleChangeDashboardPassword))
+	mux.HandleFunc("/cgi-bin/quecmanager/at_cmd/reconnect_modem.sh", RequireAuth(s.HandleReconnectModem))
+	mux.HandleFunc("/cgi-bin/quecmanager/system/diagnostics.sh", RequireAuth(s.HandleDiagnosticsCapture))
 }
 
 // HandleFetchData reads status from /tmp/qmanager_status.json or returns fallback
@@ -440,12 +475,35 @@ func (s *Server) HandleLANConfig(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "LAN configuration saved"})
 		return
 	}
+
+	// Read the real bridge0 address instead of a hardcoded placeholder.
+	ipaddr := "192.168.225.1"
+	netmask := "255.255.255.0"
+	if out, err := exec.Command("ip", "-4", "-o", "addr", "show", "dev", "bridge0").Output(); err == nil {
+		fields := strings.Fields(string(out))
+		for i, f := range fields {
+			if f == "inet" && i+1 < len(fields) {
+				// format: 192.168.225.1/24
+				parts := strings.Split(fields[i+1], "/")
+				ipaddr = parts[0]
+				if len(parts) == 2 {
+					if bits := parts[1]; bits == "24" {
+						netmask = "255.255.255.0"
+					} else if bits == "16" {
+						netmask = "255.255.0.0"
+					}
+				}
+				break
+			}
+		}
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"lan": map[string]interface{}{
-			"ipaddr":  "192.168.100.40",
-			"netmask": "255.255.255.0",
-			"gateway": "192.168.100.1",
+			"ipaddr":  ipaddr,
+			"netmask": netmask,
+			"gateway": ipaddr,
 			"dhcp":    true,
 		},
 	})
@@ -454,17 +512,28 @@ func (s *Server) HandleLANConfig(w http.ResponseWriter, r *http.Request) {
 // HandleLANDevices lists connected LAN clients
 func (s *Server) HandleLANDevices(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Real neighbor table from the ARP cache — no hardcoded fake devices.
+	devices := []map[string]interface{}{}
+	if out, err := exec.Command("ip", "neigh", "show").Output(); err == nil {
+		scanner := bufio.NewScanner(strings.NewReader(string(out)))
+		for scanner.Scan() {
+			fields := strings.Fields(scanner.Text())
+			// e.g. 192.168.225.54 dev bridge0 lladdr 1c:56:8e:0e:2f:b9 REACHABLE
+			if len(fields) >= 5 && fields[1] == "dev" && (fields[3] == "lladdr") {
+				devices = append(devices, map[string]interface{}{
+					"ip":        fields[0],
+					"mac":       fields[4],
+					"interface": fields[2],
+					"connected": len(fields) > 5 && (fields[5] == "REACHABLE" || fields[5] == "STALE"),
+				})
+			}
+		}
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"devices": []map[string]interface{}{
-			{
-				"hostname":  "ubuntu-hp",
-				"ip":        "192.168.100.40",
-				"mac":       "00:11:22:33:44:55",
-				"interface": "eth0",
-				"connected": true,
-			},
-		},
+		"devices": devices,
 	})
 }
 
@@ -609,14 +678,12 @@ func (s *Server) HandleVideoOptimizer(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "method_not_allowed"})
 }
 
-// HandleSSHPassword updates the system SSH password
+// HandleSSHPassword updates the system SSH password.
+// Real implementation in missing_endpoints.go (handleSSHPasswordImpl):
+// verifies current_password against /etc/qmanager/auth.json, enforces the
+// password policy, then pipes the new password into `passwd root`.
 func (s *Server) HandleSSHPassword(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if r.Method != http.MethodPost {
-		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
-		return
-	}
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "SSH password updated successfully"})
+	s.handleSSHPasswordImpl(w, r)
 }
 
 // HandleSoftwareUpdate manages OTA & software update checks
