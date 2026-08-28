@@ -276,6 +276,85 @@ curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1/  # → 200
 >
 > ⚠️ **`systemctl is-enabled` lies on Quectel**: it reports `disabled` for units whose wants symlink lives in `/lib` (it only reads `/etc` state). Ignore it — the boot-time authority is the wants symlink itself. Verify with `ls /lib/systemd/system/multi-user.target.wants/qmanager-*` + a reboot test, not `is-enabled`. Do NOT run `systemctl enable` after placing units in `/lib` — it duplicates the symlink into `/etc` (harmless but confusing) and then `is-enabled`/`is-active` read from there.
 
+### 7. 🧹 Clean Legacy QManager Config + Lighttpd (Full Clean-Room)
+
+After QManager-Go is running, clean up the **old config files and web servers**
+left by legacy QManager (PHP/Python/Lighttpd) / SimpleAdmin so nothing holds
+port 80/443, nothing writes stale data, and the boot log is silent.
+
+#### 7a. Remove Lighttpd + legacy web stack
+
+```sh
+ssh root@192.168.225.1
+
+# Stop & disable lighttpd (systemd + init.d + native)
+systemctl stop lighttpd 2>/dev/null; systemctl disable lighttpd 2>/dev/null
+/etc/init.d/lighttpd stop 2>/dev/null; /etc/init.d/lighttpd disable 2>/dev/null
+killall -9 lighttpd python python3 php-cgi 2>/dev/null
+
+# Lighttpd config + runtime dirs (usually on the writable ubi2_0 volume)
+rm -rf /etc/lighttpd /usrdata/etc/lighttpd /var/log/lighttpd /run/lighttpd
+rm -f  /etc/init.d/lighttpd /lib/systemd/system/lighttpd.service 2>/dev/null
+
+# Legacy document root + CGI (php/python .cgi handlers from QuecManager)
+rm -rf /www /usrdata/www /usrdata/cgi-bin /usrdata/php* /usrdata/etc/php*
+
+# Any mod_cgi / fastcgi php leftovers
+rm -rf /usrdata/php-fpm* /usrdata/etc/php-fpm* /usrdata/var/run/php-fpm* 2>/dev/null
+
+mount -o remount,rw / 2>/dev/null
+rm -f /lib/systemd/system/lighttpd.service 2>/dev/null
+mount -o remount,ro / 2>/dev/null
+systemctl daemon-reload
+```
+
+#### 7b. Clean legacy QManager config files (keep the live ones!)
+
+`qmanager-core` reads/writes `/etc/qmanager/` — **do NOT wipe the whole dir**.
+Keep the files it uses, delete only legacy leftovers:
+
+- **KEEP**: `auth.json`, `profiles/`, `qmanager.conf`, `ping_profile.json`,
+  `quality_thresholds.json`, `tower_lock.json`, `alert_routing.json`,
+  `custom_dns.json`, `adaptive_polling.json`, `mtu.json`, `imei_backup.json`,
+  `known_iccids`, `crash.log`, `VERSION`, `sessions.json` (managed live),
+  `active_scenario`, `last_boot_id`, `band_failover.enabled` +
+  `band_failover_enabled` (both are read by current builds — keep them,
+  they are 1-char flags), `environment` (log level), `long_commands.list`
+  (AT command allow-list used by the AT terminal).
+- **DELETE (legacy only, if present)**: `.htpasswd` (SimpleAdmin basic-auth),
+  stale `*.sh` / `*.cgi` / `*.tmp` / `*.old` / `*.bak` files.
+
+```sh
+# Safe cleanup — only touches known-legacy files
+cd /etc/qmanager
+rm -f .htpasswd *.tmp *.old *.bak *.cgi 2>/dev/null
+ls -la /etc/qmanager/  # review what remains
+```
+
+> ⚠️ **Never** blindly `rm -rf /etc/qmanager` — you will wipe your APN
+> profiles, band locks and dashboard password with it.
+
+#### 7c. Verify a clean state
+
+```sh
+# 1. Only qmanager-core may own ports 80/443/8838
+netstat -tlnp 2>/dev/null | grep -E ':(80|443|8838)'
+
+# 2. No legacy daemons alive
+ps w | grep -iE 'lighttpd|php|socat|simpleadmin' | grep -v grep || echo CLEAN
+
+# 3. Boot log has no stale service failures
+dmesg | grep -iE 'socat|simplefirewall|cfunfix' | tail -3   # expect: empty
+
+# 4. Dashboard up & protected
+curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1/          # 200
+curl -sk -o /dev/null -w '%{http_code}\n' \
+  https://127.0.0.1/cgi-bin/quecmanager/at_cmd/send_command.sh        # 401 (auth)
+```
+
+After this the modem is a **clean-room QManager-Go**: single binary on
+80/443, firewall up, no legacy web stack, minimal /etc/qmanager.
+
 ---
 
 ## 📱 Supported Modem Hardware & Platforms
