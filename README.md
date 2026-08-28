@@ -102,6 +102,8 @@ WantedBy=multi-user.target
 
 > ⚠️ **Important Systemd Boot Fix Note:**
 > Do **NOT** set `After=network-online.target` on Qualcomm Quectel modems. On Quectel internal Linux OS, `network-online.target` remains inactive during cold boot, which prevents Systemd from auto-starting services after a power cycle. Using `After=basic.target` guarantees instant autostart upon boot.
+>
+> 🚨 **CRITICAL — Unit file must live in `/lib`, not `/etc`.** On Quectel modems `/etc` is backed by the late-mounted `ubi2_0` volume, so systemd **silently skips** any custom unit whose fragment file is in `/etc` during cold boot (service stays `inactive`, no error, no start attempt). Units in `/lib/systemd/system` (same place as `sshd`) are guaranteed to be processed. Also point `ExecStart` at a wrapper on rootfs (e.g. `/lib/qmanager-start.sh`) — if `ExecStart` points directly into `/usrdata/qmanager/qmanager-core`, systemd auto-derives `RequiresMountsFor=/usrdata/qmanager`, which cannot resolve at boot and the unit is skipped. `deploy.sh` handles both automatically.
 
 #### Step 3: Enable & Start Systemd Service
 ```sh
