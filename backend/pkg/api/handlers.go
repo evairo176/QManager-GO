@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -181,10 +182,33 @@ func (s *Server) HandleFetchData(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	cacheFile := "/tmp/qmanager_status.json"
-	data, err := os.ReadFile(cacheFile)
-	if err == nil && len(data) > 0 {
-		_, _ = w.Write(data)
-		return
+	var status map[string]interface{}
+	if data, err := os.ReadFile(cacheFile); err == nil && len(data) > 0 {
+		if json.Unmarshal(data, &status) == nil {
+			// Enrich connectivity with latency history for the monitoring page.
+			// Frontend (latency-monitoring-card.tsx) reads:
+			//   connectivity.latency_history     -> number[] (last RTT values)
+			//   connectivity.history_interval_sec
+			//   connectivity.history_size
+			//   connectivity.avg_latency_ms
+			// Data comes from the NDJSON scribbled by the watchdog ever 30s.
+			if conn, ok := status["connectivity"].(map[string]interface{}); ok {
+				latHistory, histSec, histSize := readPingHistorySummary()
+				conn["latency_history"] = latHistory
+				conn["history_interval_sec"] = histSec
+				conn["history_size"] = histSize
+				if len(latHistory) > 0 {
+					var sum float64
+					for _, v := range latHistory {
+						sum += v
+					}
+					conn["avg_latency_ms"] = math.Round(sum/float64(len(latHistory))*10) / 10
+				}
+			}
+			payload, _ := json.Marshal(status)
+			_, _ = w.Write(payload)
+			return
+		}
 	}
 
 	// Fallback JSON if cache does not exist yet
@@ -217,6 +241,52 @@ func (s *Server) HandleFetchData(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	_ = json.NewEncoder(w).Encode(fallback)
+}
+
+// readPingHistorySummary parses /tmp/qmanager_ping_history.json (NDJSON lines
+// of {ts, lat, loss, ...}) into:
+//   - latencyHistory: last latency values, oldest first (null -> 0 sentinel)
+//   - intervalSec:    nominal sampling interval (30s watchdog cadence)
+//   - size:           number of samples retained
+func readPingHistorySummary() ([]float64, int, int) {
+	histFile := "/tmp/qmanager_ping_history.json"
+	lat := []float64{}
+	intervalSec := 30
+
+	data, err := os.ReadFile(histFile)
+	if err != nil {
+		return lat, intervalSec, 0
+	}
+	lines := strings.Split(string(data), "\n")
+	var prevTS int64 = 0
+	for _, l := range lines {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		var entry struct {
+			Ts  int64    `json:"ts"`
+			Lat *float64 `json:"lat"`
+		}
+		if json.Unmarshal([]byte(l), &entry) == nil {
+			if entry.Ts > 0 && prevTS > 0 {
+				diff := int(entry.Ts - prevTS)
+				if diff > 0 && diff < 300 {
+					intervalSec = diff
+				}
+			}
+			prevTS = entry.Ts
+			if entry.Lat != nil {
+				lat = append(lat, *entry.Lat)
+			} else {
+				lat = append(lat, 0)
+			}
+		}
+	}
+	if len(lat) > 720 {
+		lat = lat[len(lat)-720:]
+	}
+	return lat, intervalSec, len(lat)
 }
 
 type CommandRequest struct {
