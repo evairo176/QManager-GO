@@ -85,44 +85,43 @@ export const transitionSlow: Transition = {
  * settle in sequence at a calm cadence. Pair with `itemVariants` on each child.
  */
 export const containerVariants: Variants = {
-  hidden: {},
+  hidden: { opacity: 0 },
   visible: {
-    transition: { staggerChildren: 0.055, delayChildren: 0.02 },
+    opacity: 1,
+    transition: { staggerChildren: 0.045, delayChildren: 0.02 },
   },
 };
 
 /**
- * Fade-up entrance — content lifts 8px into place on the reference curve. This
- * is the most-used entrance in the product; dozens of surfaces consume it by
- * reference, so its curve *is* the app's entrance feel. Change it here and the
- * whole app retunes at once.
+ * Fade-up entrance — content lifts 10px into place on the GSAP reference curve
+ * with subtle optical deblur.
  */
 export const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 8 },
+  hidden: { opacity: 0, y: 10, filter: "blur(2px)" },
   visible: {
     opacity: 1,
     y: 0,
+    filter: "blur(0px)",
     transition: { duration: DUR.slow, ease: EASE_OUT_EXPO },
   },
 };
 
 /**
- * Route transition — the single most-felt motion in the product, fired on every
- * navigation. Incoming content rises 10px and settles on the reference curve;
- * outgoing content fades quickly out of the way first (drive with
- * `AnimatePresence mode="wait"`). Pure transform + opacity: no blur, no scale,
- * the quiet macOS System Settings pane-swap. Reduced motion drops the rise via
- * the global `MotionConfig` and leaves a clean cross-fade.
+ * Route transition — smooth upward glide with subtle deblur on entrance
+ * and quick fade on departure (mode="wait").
  */
 export const pageVariants: Variants = {
-  hidden: { opacity: 0, y: 10 },
+  hidden: { opacity: 0, y: 12, filter: "blur(4px)" },
   enter: {
     opacity: 1,
     y: 0,
+    filter: "blur(0px)",
     transition: { duration: DUR.slow, ease: EASE_OUT_EXPO },
   },
   exit: {
     opacity: 0,
-    transition: { duration: 0.12, ease: EASE_OUT_QUART },
+    y: -6,
+    filter: "blur(2px)",
+    transition: { duration: 0.14, ease: EASE_OUT_QUART },
   },
 };

@@ -28,6 +28,7 @@ import { isLoggedIn } from "@/hooks/use-auth";
 import { useAutoLogout } from "@/hooks/use-auto-logout";
 import { useBootPendingReboot } from "@/hooks/use-boot-pending-reboot";
 import { ReconnectingBanner } from "@/components/reboot/reconnecting-banner";
+import { HeaderStatusPill } from "@/components/header-status-pill";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const breadcrumbs = useBreadcrumbs();
@@ -54,20 +55,26 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         Skip to main content
       </a>
       <AppSidebar />
-      <SidebarInset>
-        <header className="bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b backdrop-blur-md">
-          <div className="flex items-center gap-2 px-4">
-            <SidebarTrigger className="-ml-1" />
+      <SidebarInset className="relative overflow-hidden">
+        {/* Ambient atmospheric spotlight glow — GSAP web inspired */}
+        <div
+          className="pointer-events-none fixed -top-36 left-1/2 -translate-x-1/2 h-80 w-[900px] max-w-full rounded-full bg-gradient-to-b from-primary/15 via-primary/5 to-transparent blur-3xl opacity-50 dark:opacity-30 z-0"
+          aria-hidden="true"
+        />
+
+        <header className="bg-background/75 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border/40 backdrop-blur-xl px-4 sm:px-6 transition-colors shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <SidebarTrigger className="-ml-1 text-muted-foreground hover:text-foreground transition-colors" />
             <Separator
               orientation="vertical"
-              className="mr-2 data-[orientation=vertical]:h-4"
+              className="mr-1.5 data-[orientation=vertical]:h-4 opacity-50"
             />
-            <Breadcrumb>
-              <BreadcrumbList>
+            <Breadcrumb className="min-w-0">
+              <BreadcrumbList className="flex-nowrap overflow-hidden text-ellipsis">
                 {breadcrumbs.map((breadcrumb, index) => (
                   <React.Fragment key={breadcrumb.href}>
                     {index > 0 && (
-                      <BreadcrumbSeparator className="hidden desktop:block" />
+                      <BreadcrumbSeparator className="hidden desktop:block text-muted-foreground/50" />
                     )}
                     <BreadcrumbItem
                       className={
@@ -75,9 +82,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       }
                     >
                       {breadcrumb.isCurrentPage ? (
-                        <BreadcrumbPage>{breadcrumb.label}</BreadcrumbPage>
+                        <BreadcrumbPage className="font-semibold text-foreground bg-accent/60 px-2 py-0.5 rounded-md text-xs sm:text-sm">
+                          {breadcrumb.label}
+                        </BreadcrumbPage>
                       ) : (
-                        <BreadcrumbLink href={breadcrumb.href}>
+                        <BreadcrumbLink
+                          href={breadcrumb.href}
+                          className="text-xs sm:text-sm text-muted-foreground hover:text-foreground transition-colors"
+                        >
                           {breadcrumb.label}
                         </BreadcrumbLink>
                       )}
@@ -87,26 +99,27 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </BreadcrumbList>
             </Breadcrumb>
           </div>
+
+          {/* Command Strip Header Actions */}
+          <HeaderStatusPill />
         </header>
+
         <SimSwapBanner />
         <ReconnectingBanner />
-        {/* Route transition — the reference "refined rise + settle". The
-            outgoing page fades out (0.12s) before the incoming content rises
-            10px into place on the ease-out-expo curve (mode="wait"). Keyed on
-            pathname so each navigation re-triggers it. Reduced-motion users get
-            a clean cross-fade with no rise (handled by the root MotionConfig). */}
+
+        {/* Route transition — refined rise + settle with deblur */}
         <AnimatePresence mode="wait">
-          <motion.div
+          <motion.main
             id="main-content"
             key={pathname}
-            className="px-2 lg:px-6 py-4"
+            className="relative z-10 mx-auto w-full max-w-7xl px-3 sm:px-6 lg:px-8 py-5 flex-1"
             variants={pageVariants}
             initial="hidden"
             animate="enter"
             exit="exit"
           >
             {children}
-          </motion.div>
+          </motion.main>
         </AnimatePresence>
       </SidebarInset>
     </SidebarProvider>

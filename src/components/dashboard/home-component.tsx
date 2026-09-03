@@ -37,7 +37,7 @@ const HomeComponent = () => {
   const hasScc = carrierComponents.some((c) => c.type === "SCC");
 
   return (
-    <div className="grid grid-cols-1 gap-6 px-4 lg:px-6 @3xl/main:grid-cols-2 @5xl/main:grid-cols-5" aria-live="polite" aria-atomic="false">
+    <div className="grid grid-cols-1 gap-6 @3xl/main:grid-cols-2 @5xl/main:grid-cols-5" aria-live="polite" aria-atomic="false">
       {error && !isLoading && !reconnecting && (
         <div role="alert" className="col-span-full rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {t("alert.modem_unreachable")}
