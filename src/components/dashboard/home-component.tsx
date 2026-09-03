@@ -8,7 +8,6 @@ import { useTranslation } from "react-i18next";
 import { useModemStatus } from "@/hooks/use-modem-status";
 import { useRadioDetails } from "@/hooks/use-radio-details";
 import { useConnectionStatus } from "@/lib/reboot/connection";
-import NetworkStatusComponent from "./network-status";
 import DeviceStatus from "./device-status";
 import LTEStatusComponent from "./lte-status";
 import NrStatusComponent from "./nr-status";
@@ -22,7 +21,7 @@ import { CockpitHero } from "./cockpit-hero";
 
 
 const HomeComponent = () => {
-  const { data, isLoading, isStale, error } = useModemStatus();
+  const { data, isLoading, error } = useModemStatus();
   // L1-adjacent radio reads (MIMO, timing advance) are off the poller — fetch
   // them on-demand while this page is mounted; the hook stops on unmount.
   const { details: radioDetails, lteTa: liveLteTa, nrTa: liveNrTa } =
@@ -48,13 +47,6 @@ const HomeComponent = () => {
         </div>
       )}
       <div className="grid gap-4 @3xl/main:col-span-3 @5xl/main:col-span-3 col-span-1">
-        <NetworkStatusComponent
-          data={data?.network ?? null}
-          connectivity={data?.connectivity ?? null}
-          modemReachable={data?.modem_reachable ?? false}
-          isLoading={isLoading}
-          isStale={isStale}
-        />
         <motion.div
           className="grid grid-cols-1 @3xl/main:grid-cols-2 grid-flow-row gap-4"
           variants={containerVariants}

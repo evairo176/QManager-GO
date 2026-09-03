@@ -19,7 +19,8 @@ export function CockpitHero({ data, isLoading }: CockpitHeroProps) {
   const wanIp = data?.network?.wan_ipv4 || null;
   const caActive = data?.network?.ca_active;
   const caCount = (data?.network?.ca_count || 0) + 1;
-  const totalBw = data?.network?.total_bandwidth_mhz || 0;
+  // Aggregated bandwidth comes from the LTE PCC bandwidth in MHz.
+  const totalBw = data?.lte?.bandwidth ?? 0;
 
   const latency = data?.connectivity?.latency_ms;
   const packetLoss = data?.connectivity?.packet_loss_pct ?? 0;
