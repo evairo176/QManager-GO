@@ -29,6 +29,7 @@ export interface AboutDeviceResponse {
     hostname: string;
     kernel_version: string;
     openwrt_version: string;
+    qmanager_version?: string;
   };
   error?: string;
 }

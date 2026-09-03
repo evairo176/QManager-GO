@@ -97,7 +97,7 @@ const AboutQManagerCard = ({ data, isLoading }: AboutQManagerCardProps) => {
                   {t("about_device.about_qmanager.fields.version_label")}
                 </dt>
                 <dd className="text-sm font-semibold tabular-nums">
-                  {packageJson.version}
+                  {data?.system?.qmanager_version || packageJson.version}
                 </dd>
               </div>
             </dl>

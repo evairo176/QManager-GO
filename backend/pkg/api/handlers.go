@@ -379,6 +379,7 @@ func (s *Server) HandleAboutDevice(w http.ResponseWriter, r *http.Request) {
 	model := "Modem"
 	firmware := "-"
 	imei := "-"
+	qmanagerVersion := "v0.2.4-beta.1"
 
 	if statusData, err := os.ReadFile("/tmp/qmanager_status.json"); err == nil {
 		var status map[string]interface{}
@@ -395,6 +396,9 @@ func (s *Server) HandleAboutDevice(w http.ResponseWriter, r *http.Request) {
 				}
 				if im, ok := dev["imei"].(string); ok && im != "" {
 					imei = im
+				}
+				if qv, ok := dev["qmanager_version"].(string); ok && qv != "" {
+					qmanagerVersion = qv
 				}
 			}
 		}
@@ -427,9 +431,10 @@ func (s *Server) HandleAboutDevice(w http.ResponseWriter, r *http.Request) {
 			"public_ipv6": "-",
 		},
 		"system": map[string]interface{}{
-			"hostname":        hostname,
-			"kernel_version":  "Linux Host",
-			"openwrt_version": "v0.2.3-go Engine",
+			"hostname":         hostname,
+			"kernel_version":   "Linux Host",
+			"openwrt_version":  "v0.2.3-go Engine",
+			"qmanager_version": qmanagerVersion,
 		},
 	})
 }
