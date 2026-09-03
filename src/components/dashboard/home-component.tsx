@@ -18,6 +18,7 @@ import RecentActivitiesComponent from "./recent-activities";
 import DeviceMetricsComponent from "./device-metrics";
 import LiveLatencyComponent from "./live-latency";
 import { StorageCard } from "./storage-card";
+import { CockpitHero } from "./cockpit-hero";
 
 
 const HomeComponent = () => {
@@ -38,6 +39,9 @@ const HomeComponent = () => {
 
   return (
     <div className="grid grid-cols-1 gap-6 @3xl/main:grid-cols-2 @5xl/main:grid-cols-5" aria-live="polite" aria-atomic="false">
+      {/* Executive Telemetry Cockpit Deck */}
+      <CockpitHero data={data} isLoading={isLoading} />
+
       {error && !isLoading && !reconnecting && (
         <div role="alert" className="col-span-full rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {t("alert.modem_unreachable")}
