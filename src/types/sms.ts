@@ -5,8 +5,10 @@
 //
 // Backend endpoint: GET/POST /cgi-bin/quecmanager/cellular/sms.sh
 //
-// Note: The SmsMessage shape matches the JSON output of `sms_tool -j recv`.
-// Verify field names against actual device output and adjust if needed.
+// Note: The raw JSON from the backend (sms_tool -j recv shape) uses
+// `index` (singular), `date`, `text` and lowercase `storage` ("me"/"sm"),
+// which differs from the normalized `SmsMessage` shape below. The `useSms`
+// hook normalizes raw items into this shape before consumers see them.
 // =============================================================================
 
 /** A single (possibly merged multi-part) SMS message */
@@ -26,6 +28,41 @@ export interface SmsMessage {
    * Required so deletion targets the correct storage (AT+CPMS).
    */
   storage: "ME" | "SM";
+}
+
+/** Raw item as returned by the backend (`sms_tool -j recv` shape). */
+export interface RawSmsItem {
+  index?: number;
+  indexes?: number[];
+  sender?: string;
+  date?: string;
+  timestamp?: string;
+  text?: string;
+  content?: string;
+  storage?: string;
+}
+
+/**
+ * Normalize one raw backend item into the SmsMessage shape used by the UI.
+ * The modem/backend speaks `index`/`date`/`text`/lowercase-storage; the UI
+ * speaks `indexes`/`timestamp`/`content`/uppercase-storage. This function is
+ * defensive: missing fields become safe defaults instead of undefined so no
+ * downstream `.match()` / `.map()` crashes on a partial item.
+ */
+export function normalizeSmsItem(item: RawSmsItem): SmsMessage {
+  const rawIndexes = Array.isArray(item.indexes)
+    ? item.indexes
+    : item.index !== undefined && item.index !== null
+      ? [item.index]
+      : [];
+  const storageRaw = (item.storage ?? "me").toLowerCase();
+  return {
+    indexes: rawIndexes.filter((i): i is number => typeof i === "number"),
+    sender: item.sender ?? "-",
+    content: item.text ?? item.content ?? "",
+    timestamp: item.date ?? item.timestamp ?? "",
+    storage: storageRaw === "sm" ? "SM" : "ME",
+  };
 }
 
 /** Storage status info */

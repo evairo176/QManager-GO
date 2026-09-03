@@ -2,11 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/auth-fetch";
+import { normalizeSmsItem } from "@/types/sms";
 import type {
   SmsMessage,
   SmsStorage,
   SmsInboxResponse,
   SmsActionResponse,
+  RawSmsItem,
 } from "@/types/sms";
 
 // =============================================================================
@@ -70,8 +72,10 @@ export function useSms(): UseSmsReturn {
         throw new Error(json.detail || json.error || "Failed to fetch SMS inbox");
       }
 
+      const rawMessages = (json.messages || []) as RawSmsItem[];
+
       return {
-        messages: json.messages || [],
+        messages: rawMessages.map(normalizeSmsItem),
         storage: json.storage || { used: 0, total: 0 },
       };
     },
