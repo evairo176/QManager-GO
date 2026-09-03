@@ -74,3 +74,8 @@ discord-bot/*.exe
 
 # Rescue directory
 /scripts-dev/rescue/
+
+# local build artifacts (qmanager-core)
+qmanager-core
+qmanager-core-armv7.tar.gz
+qmanager-core.service
