@@ -47,10 +47,17 @@ const PAGE_SIZE = 6;
 
 // Watchdog writes its recovery lifecycle to the shared Network Events feed using
 // the existing event-type strings — no new types. We reuse that feed's hook and
-// filter client-side to the two that are watchdog-relevant.
+// filter client-side to the watchdog-relevant set: recovery actions the daemon
+// itself logs (watchcat_recovery, sim_failover) plus the connectivity lifecycle
+// events the poller records around a recovery (lost → restored), so the history
+// fills with actual evidence instead of only showing once a recovery fires.
 const WATCHDOG_EVENT_TYPES = new Set<NetworkEvent["type"]>([
   "watchcat_recovery",
   "sim_failover",
+  "signal_lost",
+  "signal_restored",
+  "internet_lost",
+  "internet_restored",
 ]);
 
 function SeverityIcon({ severity }: { severity: EventSeverity }) {

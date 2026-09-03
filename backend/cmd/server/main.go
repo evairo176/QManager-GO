@@ -50,9 +50,11 @@ func main() {
 		// Tiered recovery:
 		//  - fails >= 3: soft radio reset via AT+CFUN=0/1 (no reboot, keeps session)
 		//  - fails >= 8: hard reboot (radio reset did not help, ~4 min offline)
+		isHard := fails >= 8
 		log.Printf("[Watchdog] RECOVERY: consecutive fails=%d -> %s", fails,
-			map[bool]string{true: "HARD REBOOT", false: "soft radio reset (AT+CFUN=0/1)"}[fails >= 8])
-		if fails >= 8 {
+			map[bool]string{true: "HARD REBOOT", false: "soft radio reset (AT+CFUN=0/1)"}[isHard])
+		daemon.RecordWatchcatEvent(isHard, fmt.Sprintf("%d consecutive ping failures", fails))
+		if isHard {
 			exec.Command("/bin/sh", "-c", "sync; (sleep 2; busybox reboot -f) >/dev/null 2>&1 &").Start()
 			return
 		}

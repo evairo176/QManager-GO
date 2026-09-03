@@ -215,3 +215,48 @@ func (w *Watchdog) writeStatusFile() {
 		_ = os.Rename(tmpFile, targetFile)
 	}
 }
+
+// RecordWatchcatEvent appends one NDJSON line to /tmp/qmanager_events.json so
+// watchdog recovery actions surface in the UI's Recovery Activity feed
+// alongside the poller events. Format matches Poller.recordEvent:
+//
+//	{"timestamp": <unix seconds>, "type": "watchcat_recovery|sim_failover",
+//	 "severity": "info|warning|error", "message": "<human readable>"}
+//
+// Keeps the last 200 events (same cap as the poller feed).
+func RecordWatchcatEvent(isHard bool, detail string) {
+	now := time.Now().Unix()
+	typ := "watchcat_recovery"
+	severity := "warning"
+	message := "Watchdog soft radio reset (AT+CFUN=0/1) - " + detail
+	if isHard {
+		severity = "error"
+		message = "Watchdog hard reboot - " + detail
+	}
+	entry := map[string]any{
+		"timestamp": now,
+		"type":      typ,
+		"severity":  severity,
+		"message":   message,
+	}
+	lineBytes, err := json.Marshal(entry)
+	if err != nil {
+		return
+	}
+
+	histFile := "/tmp/qmanager_events.json"
+	var existing []string
+	if data, err := os.ReadFile(histFile); err == nil {
+		for _, l := range strings.Split(string(data), "\n") {
+			l = strings.TrimSpace(l)
+			if l != "" {
+				existing = append(existing, l)
+			}
+		}
+	}
+	existing = append(existing, string(lineBytes))
+	if len(existing) > 200 {
+		existing = existing[len(existing)-200:]
+	}
+	_ = os.WriteFile(histFile, []byte(strings.Join(existing, "\n")+"\n"), 0644)
+}
