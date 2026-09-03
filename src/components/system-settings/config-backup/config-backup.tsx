@@ -16,7 +16,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { TriangleAlertIcon } from "lucide-react";
+import { TriangleAlertIcon, ArchiveRestore } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import { authFetch } from "@/lib/auth-fetch";
 import { toast } from "sonner";
 import {
@@ -59,13 +60,12 @@ const ConfigurationBackupComponent = () => {
   };
 
   return (
-    <div className="@container/main mx-auto p-2">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">{t("config_backup.page_title")}</h1>
-        <p className="text-muted-foreground">
-          {t("config_backup.page_description")}
-        </p>
-      </div>
+    <div className="@container/main mx-auto flex flex-col gap-6">
+      <PageHeader
+        icon={ArchiveRestore}
+        title={t("config_backup.page_title")}
+        description={t("config_backup.page_description")}
+      />
 
       <AnimatePresence initial={false}>
         {pending && (

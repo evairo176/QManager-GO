@@ -2,6 +2,8 @@
 
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { BellRing } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import {
   Card,
   CardContent,
@@ -32,10 +34,11 @@ const AlertsComponent = () => {
 
   return (
     <div className="@container/main mx-auto flex flex-col gap-6 p-2">
-      <div>
-        <h1 className="mb-2 text-3xl font-bold">{t("alerts.page_title")}</h1>
-        <p className="text-muted-foreground">{t("alerts.page_description")}</p>
-      </div>
+      <PageHeader
+        icon={BellRing}
+        title={t("alerts.page_title")}
+        description={t("alerts.page_description")}
+      />
 
       {hook.isLoading || !hook.state ? (
         <PageSkeleton />

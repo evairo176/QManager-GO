@@ -1,6 +1,8 @@
 "use client";
 
 import { useTranslation } from "react-i18next";
+import { Forward } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import { useSmsForwarding } from "@/hooks/use-sms-forwarding";
 import SmsForwardingCard from "./sms-forwarding-card";
 import DeliveryHealthCard from "./delivery-health-card";
@@ -13,15 +15,12 @@ const ForwardingCenterComponent = () => {
   const fwd = useSmsForwarding();
 
   return (
-    <div className="@container/main mx-auto p-2">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">
-          {t("sms.forwarding.page.title")}
-        </h1>
-        <p className="text-muted-foreground">
-          {t("sms.forwarding.page.description")}
-        </p>
-      </div>
+    <div className="@container/main mx-auto flex flex-col gap-6">
+      <PageHeader
+      icon={Forward}
+      title={t("sms.forwarding.page.title")}
+      description={t("sms.forwarding.page.description")}
+    />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:items-stretch">
         <SmsForwardingCard fwd={fwd} />
         <DeliveryHealthCard fwd={fwd} />

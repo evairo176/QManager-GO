@@ -1,8 +1,9 @@
 "use client";
-
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslation, Trans } from "react-i18next";
+import { MonitorPlay, AlertTriangle, RefreshCcwIcon } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,21 +20,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AlertTriangle, RefreshCcwIcon } from "lucide-react";
-
 import { useVideoOptimizer } from "@/hooks/use-video-optimizer";
 import { useTrafficMasquerade } from "@/hooks/use-traffic-masquerade";
 import { useTtlSettings } from "@/hooks/use-ttl-settings";
-
 import { EngineStatusCard } from "./engine-status-card";
 import { VideoOptimizerPanel } from "./video-optimizer-panel";
 import { MasqueradePanel, DEFAULT_SNI_DOMAIN } from "./masquerade-panel";
 import { CdnHostlistCard, HostlistSkeleton } from "./cdn-hostlist-card";
 import { EngineOnboarding } from "./engine-onboarding";
 import { EngineRemoveRow } from "./engine-advanced";
-
 export type ViewMode = "video" | "masquerade";
-
 /**
  * An in-flight engine toggle. `start` = idle → on, `stop` = on → idle,
  * `switch` = takeover (stop one mode, start the other). Drives the status
@@ -41,9 +37,7 @@ export type ViewMode = "video" | "masquerade";
  * destructive affordance never flashes mid-transition.
  */
 export type EngineTransition = "start" | "stop" | "switch";
-
 type Pending = { kind: EngineTransition; target: ViewMode | null } | null;
-
 /**
  * Tracks per-poll deltas of a cumulative counter to derive a live pkt/s rate.
  * Resets cleanly when the engine stops. 1s poll cadence means each delta ≈
@@ -55,7 +49,6 @@ function usePacketRate(packets: number | undefined, running: boolean) {
   const [prev, setPrev] = useState<{ packets: number | null; running: boolean }>(
     { packets: null, running: false },
   );
-
   if (running !== prev.running) {
     setPrev({ packets: running ? packets ?? null : null, running });
     if (!running && last) setLast(0);
@@ -64,10 +57,8 @@ function usePacketRate(packets: number | undefined, running: boolean) {
     setPrev({ packets, running });
     if (base !== null) setLast(Math.max(0, packets - base));
   }
-
   return last;
 }
-
 /**
  * Page-level loading placeholder. Mirrors the LOADED layout's grid exactly
  * (`@3xl/main:grid-cols-2 items-stretch`) — column 1 stacks status / tabs /
@@ -91,7 +82,6 @@ function StackSkeleton({ showHostlist }: { showHostlist: boolean }) {
     </div>
   );
 }
-
 /**
  * Returns true only once `active` has held for `delayMs`. Suppresses the
  * flash-of-skeleton on fast loads — and this app runs ON the modem, so loads
@@ -111,22 +101,18 @@ function useDelayedFlag(active: boolean, delayMs = 160) {
   }, [active, delayMs]);
   return active && shown;
 }
-
 type PendingTakeover = { target: ViewMode; apply: () => void } | null;
-
 export default function TrafficEngine() {
   const { t } = useTranslation("local-network");
   const router = useRouter();
   const searchParams = useSearchParams();
   const reduceMotion = useReducedMotion();
-
   const vo = useVideoOptimizer();
   const masq = useTrafficMasquerade();
   // Owned here (not in the row) so it survives tab switches — the row's panel
   // unmounts on every Video<->Masquerade flip, which would otherwise refetch
   // TTL and flash a spinner mid-card. Folded into the page skeleton below.
   const ttl = useTtlSettings();
-
   const initialMode: ViewMode =
     searchParams.get("mode") === "masquerade" ? "masquerade" : "video";
   const [viewMode, setViewMode] = useState<ViewMode>(initialMode);
@@ -140,7 +126,6 @@ export default function TrafficEngine() {
   // affecting toggle was flipped but the poll hadn't caught up. Drives the busy
   // badge, the switch spinner, and remove-row suppression off one source.
   const [pending, setPending] = useState<Pending>(null);
-
   const setViewModeAndUrl = useCallback(
     (mode: string) => {
       if (mode !== "video" && mode !== "masquerade") return;
@@ -154,7 +139,6 @@ export default function TrafficEngine() {
     },
     [router, searchParams],
   );
-
   // --- Derived engine truth (mutex guarantees at most one running) ---
   const voRunning = vo.settings?.status === "running";
   const masqRunning = masq.settings?.status === "running";
@@ -163,13 +147,10 @@ export default function TrafficEngine() {
     : masqRunning
       ? "masquerade"
       : null;
-
   const installed = vo.settings?.binary_installed ?? false;
   const kernelOk = vo.settings?.kernel_module_loaded ?? false;
   const canEnable = installed && kernelOk;
-
   const engineSaving = vo.isSaving || masq.isSaving;
-
   // Clear the pending transition once the poll confirms the destination state:
   // start/switch settle when the target mode owns the engine; stop settles when
   // the engine is idle and no save is still in flight. Adjust-during-render —
@@ -181,17 +162,13 @@ export default function TrafficEngine() {
         : activeMode === pending.target;
     if (settled) setPending(null);
   }
-
   const engineBusy = pending !== null;
-
   const voRate = usePacketRate(vo.settings?.packets_processed, voRunning);
   const masqRate = usePacketRate(masq.settings?.packets_processed, masqRunning);
-
   const refreshBoth = useCallback(() => {
     vo.refresh(true);
     masq.refresh(true);
   }, [vo, masq]);
-
   // --- Save handlers (single call; backend auto-takes-over) ---
   const saveVideo = useCallback(
     async (enabled: boolean, desyncRepeats: number) => {
@@ -215,7 +192,6 @@ export default function TrafficEngine() {
     },
     [vo, refreshBoth, t, masqRunning],
   );
-
   const saveMasq = useCallback(
     async (enabled: boolean, sni: string) => {
       setPending(
@@ -238,7 +214,6 @@ export default function TrafficEngine() {
     },
     [masq, refreshBoth, t, voRunning],
   );
-
   // Enabling a mode while the OTHER mode owns the engine requires confirm.
   const requestEnableVideo = useCallback(
     (desyncRepeats: number) => {
@@ -253,7 +228,6 @@ export default function TrafficEngine() {
     },
     [masqRunning, saveVideo],
   );
-
   const requestEnableMasq = useCallback(
     (sni: string) => {
       if (voRunning) {
@@ -267,7 +241,6 @@ export default function TrafficEngine() {
     },
     [voRunning, saveMasq],
   );
-
   // Safety net: if the poll never confirms (backend hiccup), don't strand the
   // status card on a busy badge forever. setState only in the timer callback, so
   // the React-compiler setState-in-effect rule is satisfied.
@@ -276,10 +249,8 @@ export default function TrafficEngine() {
     const id = setTimeout(() => setPending(null), 8000);
     return () => clearTimeout(id);
   }, [pending]);
-
   const videoLabel = t("traffic_engine.mode_video");
   const masqueradeLabel = t("traffic_engine.mode_masquerade");
-
   // --- State machine ---
   // Gate on ttl too so the Bypass Hotspot row's first fetch is covered by the
   // page skeleton — same treatment vo/masq already get; all three are fast
@@ -288,7 +259,6 @@ export default function TrafficEngine() {
   const showSkeleton = useDelayedFlag(isLoading);
   const loadError = (vo.error && !vo.settings) || (masq.error && !masq.settings);
   const anyRunning = voRunning || masqRunning;
-
   // Buttery tab switch: the outgoing panel slides + fades one way while the
   // incoming panel slides in from the other side (direction from `dir`). The
   // panel and the CDN column share one duration + easing so the two timelines
@@ -307,20 +277,15 @@ export default function TrafficEngine() {
   const hostlistTransition = reduceMotion
     ? { duration: 0 }
     : { duration: 0.32, ease: EXPO };
-
   return (
-    <div className="@container/main mx-auto p-2">
+    <div className="@container/main mx-auto flex flex-col gap-6">
       {/* Header spans full width; content sits in a left-aligned 2-col grid
           below it (System-Settings shape). */}
-      <header className="mb-6">
-        <h1 className="mb-2 text-3xl font-bold tracking-tight">
-          {t("traffic_engine.page_title")}
-        </h1>
-        <p className="text-muted-foreground">
-          {t("traffic_engine.page_description")}
-        </p>
-      </header>
-
+      <PageHeader
+      icon={MonitorPlay}
+      title={t("traffic_engine.page_title")}
+      description={t("traffic_engine.page_description")}
+    />
       {isLoading ? (
         showSkeleton ? (
           <StackSkeleton showHostlist={initialMode === "video"} />
@@ -375,7 +340,6 @@ export default function TrafficEngine() {
                 ) : undefined
               }
             />
-
             {!kernelOk && (
               <Alert aria-live="polite">
                 <AlertTriangle className="size-4" />
@@ -392,7 +356,6 @@ export default function TrafficEngine() {
                 </AlertDescription>
               </Alert>
             )}
-
             <Tabs value={viewMode} onValueChange={setViewModeAndUrl}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="video">
@@ -415,7 +378,6 @@ export default function TrafficEngine() {
                   )}
                 </TabsTrigger>
               </TabsList>
-
               {/* One keyed panel crossfades over the other (relative wrapper so
                   the popLayout exit can overlay). role=tabpanel preserves the
                   tab semantics Radix's TabsContent would otherwise provide. */}
@@ -469,7 +431,6 @@ export default function TrafficEngine() {
               </div>
             </Tabs>
           </div>
-
           {/* Column 2: the CDN hostlist is a companion to Video Optimizer; on
               the Masquerade tab this column is intentionally empty space. It
               stretches to column 1's height (h-full) so its bottom edge lines
@@ -490,7 +451,6 @@ export default function TrafficEngine() {
           </AnimatePresence>
         </div>
       )}
-
       {/* Takeover confirm: switching which mode owns the single engine */}
       <AlertDialog
         open={pendingTakeover !== null}

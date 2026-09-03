@@ -1,6 +1,8 @@
 "use client";
 
 import { useTranslation } from "react-i18next";
+import { Radio } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import LteFreqLockingComponent from "./lte-freq-locking";
 import NrFreqLockingComponent from "./nr-freq-locking";
 import { useFrequencyLocking } from "@/hooks/use-frequency-locking";
@@ -12,15 +14,12 @@ const FrequencyLockingComponent = () => {
   const { data: modemData } = useModemStatus();
 
   return (
-    <div className="@container/main mx-auto p-2">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">
-          {t("cell_locking.frequency_locking.page.title")}
-        </h1>
-        <p className="text-muted-foreground">
-          {t("cell_locking.frequency_locking.page.description")}
-        </p>
-      </div>
+    <div className="@container/main mx-auto flex flex-col gap-6">
+      <PageHeader
+      icon={Radio}
+      title={t("cell_locking.frequency_locking.page.title")}
+      description={t("cell_locking.frequency_locking.page.description")}
+    />
       <div className="grid grid-cols-1 @3xl/main:grid-cols-2 grid-flow-row gap-4">
         <LteFreqLockingComponent
           modemState={freqLock.modemState}

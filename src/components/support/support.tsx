@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { Mail, ExternalLink } from "lucide-react";
+import { Mail, ExternalLink, LifeBuoy } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "@/components/page-header";
 import {
   Card,
   CardContent,
@@ -34,11 +35,12 @@ const SupportComponent = () => {
   const { t } = useTranslation("system-settings");
 
   return (
-    <div className="@container/main mx-auto p-2">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">{t("support.page.title")}</h1>
-        <p className="text-muted-foreground">{t("support.page.subtitle")}</p>
-      </div>
+    <div className="@container/main mx-auto flex flex-col gap-6">
+      <PageHeader
+      icon={LifeBuoy}
+      title={t("support.page.title")}
+      description={t("support.page.subtitle")}
+    />
       <div className="grid grid-cols-1 @3xl/main:grid-cols-2 grid-flow-row gap-4">
         {/* Contact Card */}
         <Card>

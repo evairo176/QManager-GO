@@ -1,6 +1,8 @@
 "use client";
 
 import { useTranslation } from "react-i18next";
+import { Dog } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import { useWatchdogSettings } from "@/hooks/use-watchdog-settings";
 import type { UseWatchdogSettingsReturn } from "@/hooks/use-watchdog-settings";
 import {
@@ -40,10 +42,11 @@ const WatchdogComponent = () => {
 
   return (
     <div className="@container/main mx-auto flex flex-col gap-6 p-2">
-      <div>
-        <h1 className="mb-2 text-3xl font-bold">{t("watchdog.page_title")}</h1>
-        <p className="text-muted-foreground">{t("watchdog.page_description")}</p>
-      </div>
+      <PageHeader
+        icon={Dog}
+        title={t("watchdog.page_title")}
+        description={t("watchdog.page_description")}
+      />
 
       {hookData.isLoading || !hookData.settings ? (
         <PageSkeleton />

@@ -2,19 +2,20 @@
 
 import React from "react";
 import { useTranslation } from "react-i18next";
+import { GitBranch } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import ConnectionScenariosCard from "./connection-scenario-card";
 
 const ConnectionScenariosComponent = () => {
   const { t } = useTranslation("cellular");
 
   return (
-    <div className="@container/main mx-auto p-2">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">{t("scenarios.page.title")}</h1>
-        <p className="text-muted-foreground">
-          {t("scenarios.page.description")}
-        </p>
-      </div>
+    <div className="@container/main mx-auto flex flex-col gap-6">
+      <PageHeader
+      icon={GitBranch}
+      title={t("scenarios.page.title")}
+      description={t("scenarios.page.description")}
+    />
       <ConnectionScenariosCard />
     </div>
   );

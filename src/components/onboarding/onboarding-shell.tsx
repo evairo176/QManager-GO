@@ -80,7 +80,13 @@ export function OnboardingShell({
   };
 
   return (
-    <div className="flex min-h-svh items-center justify-center bg-background p-6">
+    <div className="relative flex min-h-svh items-center justify-center overflow-hidden bg-background p-6">
+      {/* Aurora backdrop untuk konsistensi dengan login */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute -top-48 -left-32 h-[36rem] w-[36rem] rounded-full bg-primary/25 blur-3xl animate-aurora-1" />
+        <div className="absolute -bottom-56 -right-24 h-[40rem] w-[40rem] rounded-full bg-blue-500/20 blur-3xl animate-aurora-2" />
+        <div className="absolute inset-0 opacity-[0.35] dark:opacity-25" style={{ backgroundImage: "radial-gradient(circle, oklch(0.5 0.1 264 / 0.18) 1px, transparent 1px)", backgroundSize: "26px 26px" }} />
+      </div>
       {/* Screen-reader live region */}
       <p
         ref={liveRef}
@@ -98,7 +104,7 @@ export function OnboardingShell({
       </p>
 
       <div className="w-full max-w-md">
-        <div className="rounded-xl border border-border bg-card shadow-2xl ring-1 ring-border/50 px-10 py-10 flex flex-col gap-8">
+        <div className="rounded-2xl border border-border/60 bg-background/80 backdrop-blur-xl shadow-2xl shadow-primary/5 ring-1 ring-border/40 px-10 py-10 flex flex-col gap-8">
 
           {/* Progress dots — active dot morphs to pill */}
           <div

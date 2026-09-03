@@ -1,15 +1,14 @@
 "use client";
-
 import { useTranslation, Trans } from "react-i18next";
+import { Bird, TriangleAlertIcon } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import { useNetBird } from "@/hooks/use-netbird";
 import { NetBirdConnectionCard } from "./netbird-connection-card";
 import { NetBirdPeersCard } from "./netbird-peers-card";
-
 import {
   Card,
   CardContent,
 } from "@/components/ui/card";
-
 import {
   Empty,
   EmptyDescription,
@@ -17,25 +16,19 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-
-import { TriangleAlertIcon } from "lucide-react";
-
 import Link from "next/link";
-
 const NetBirdComponent = () => {
   const { t } = useTranslation("monitoring");
   const hookData = useNetBird();
-
   // Mutual exclusion guard — other VPN is installed
   if (!hookData.isLoading && hookData.status?.other_vpn_installed) {
     return (
-      <div className="@container/main mx-auto p-2">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2">{t("netbird.page_title")}</h1>
-          <p className="text-muted-foreground">
-            {t("netbird.page_description")}
-          </p>
-        </div>
+      <div className="@container/main mx-auto flex flex-col gap-6">
+        <PageHeader
+      icon={Bird}
+      title={t("netbird.page_title")}
+      description={t("netbird.page_description")}
+    />
         <div className="grid grid-cols-1 @3xl/main:grid-cols-2 grid-flow-row gap-4">
           <Card>
             <CardContent>
@@ -65,9 +58,8 @@ const NetBirdComponent = () => {
       </div>
     );
   }
-
   return (
-    <div className="@container/main mx-auto p-2">
+    <div className="@container/main mx-auto flex flex-col gap-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">{t("netbird.page_title")}</h1>
         <p className="text-muted-foreground">
@@ -85,5 +77,4 @@ const NetBirdComponent = () => {
     </div>
   );
 };
-
 export default NetBirdComponent;

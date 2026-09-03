@@ -1,12 +1,11 @@
 "use client";
-
 import { useTranslation, Trans } from "react-i18next";
+import { Waypoints, TriangleAlertIcon } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import { useTailscale } from "@/hooks/use-tailscale";
 import { TailscaleConnectionCard } from "./tailscale-connection-card";
 import { TailscalePeersCard } from "./tailscale-peers-card";
-
 import { Card, CardContent } from "@/components/ui/card";
-
 import {
   Empty,
   EmptyDescription,
@@ -14,24 +13,19 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-
 import Link from "next/link";
-import { TriangleAlertIcon } from "lucide-react";
-
 const TailscaleComponent = () => {
   const { t } = useTranslation("monitoring");
   const hookData = useTailscale();
-
   // Mutual exclusion guard — other VPN is installed
   if (!hookData.isLoading && hookData.status?.other_vpn_installed) {
     return (
-      <div className="@container/main mx-auto p-2">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2">{t("tailscale.page_title")}</h1>
-          <p className="text-muted-foreground">
-            {t("tailscale.page_description")}
-          </p>
-        </div>
+      <div className="@container/main mx-auto flex flex-col gap-6">
+        <PageHeader
+      icon={Waypoints}
+      title={t("tailscale.page_title")}
+      description={t("tailscale.page_description")}
+    />
         <div className="grid grid-cols-1 @3xl/main:grid-cols-2 grid-flow-row gap-4">
           <Card>
             <CardContent>
@@ -61,9 +55,8 @@ const TailscaleComponent = () => {
       </div>
     );
   }
-
   return (
-    <div className="@container/main mx-auto p-2">
+    <div className="@container/main mx-auto flex flex-col gap-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">{t("tailscale.page_title")}</h1>
         <p className="text-muted-foreground">
@@ -81,5 +74,4 @@ const TailscaleComponent = () => {
     </div>
   );
 };
-
 export default TailscaleComponent;

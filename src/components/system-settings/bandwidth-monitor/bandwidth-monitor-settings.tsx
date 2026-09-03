@@ -32,6 +32,8 @@ import {
 import { TbInfoCircleFilled } from "react-icons/tb";
 import { AlertTriangleIcon } from "lucide-react";
 
+import { BarChart3 } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import { useBandwidthSettings } from "@/hooks/use-bandwidth-settings";
 import { useTranslation } from "react-i18next";
 
@@ -40,10 +42,8 @@ const BandwidthMonitorSettings = () => {
   const bandwidth = useBandwidthSettings();
 
   return (
-    <div className="@container/main mx-auto p-2">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">{t("bandwidth_monitor.page_title")}</h1>
-      </div>
+    <div className="@container/main mx-auto flex flex-col gap-6">
+      <PageHeader icon={BarChart3} title={t("bandwidth_monitor.page_title")} />
       <div className="grid grid-cols-1 @3xl/main:grid-cols-2 grid-flow-row gap-4">
         <Card className="@container/card">
           <CardHeader>

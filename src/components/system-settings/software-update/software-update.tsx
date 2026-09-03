@@ -21,11 +21,13 @@ import {
   AlertTriangleIcon,
   TriangleAlertIcon,
   DownloadIcon,
+  DownloadCloud,
   LoaderCircle,
   RefreshCwIcon,
   PackageIcon,
   RotateCwIcon,
 } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 
 import { useSoftwareUpdate } from "@/hooks/use-software-update";
 import type { UpdateStatus } from "@/hooks/use-software-update";
@@ -393,13 +395,12 @@ const SoftwareUpdateComponent = () => {
 function PageWrapper({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation("system-settings");
   return (
-    <div className="@container/main mx-auto p-2">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">{t("software_update.page_title")}</h1>
-        <p className="text-muted-foreground">
-          {t("software_update.page_description")}
-        </p>
-      </div>
+    <div className="@container/main mx-auto flex flex-col gap-6">
+      <PageHeader
+        icon={DownloadCloud}
+        title={t("software_update.page_title")}
+        description={t("software_update.page_description")}
+      />
       {children}
     </div>
   );

@@ -1,10 +1,10 @@
 "use client";
-
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { Languages, LanguagesIcon, TriangleAlertIcon } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
-import { LanguagesIcon, TriangleAlertIcon } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +29,6 @@ import { AVAILABLE_LANGUAGES } from "@/lib/i18n/available-languages";
 import { persistLanguage } from "@/lib/i18n/config";
 import { LanguagePackRow } from "./language-pack-row";
 import type { LanguageCode } from "@/types/i18n";
-
 export function LanguagePackCard() {
   const { t, i18n } = useTranslation("system-settings");
   const {
@@ -42,7 +41,6 @@ export function LanguagePackCard() {
     remove,
     refetch,
   } = useLanguagePacks();
-
   const catalogView = React.useMemo(() => {
     return buildCatalogView({
       catalog: AVAILABLE_LANGUAGES,
@@ -50,9 +48,7 @@ export function LanguagePackCard() {
       manifest: list?.manifest ?? null,
     });
   }, [list]);
-
   const activeCode = i18n.language as LanguageCode;
-
   const handleSelectActive = React.useCallback(
     (code: LanguageCode) => {
       if (code === activeCode) return;
@@ -69,7 +65,6 @@ export function LanguagePackCard() {
     },
     [activeCode, i18n, t],
   );
-
   const handleInstall = React.useCallback(
     async (code: LanguageCode) => {
       const englishName =
@@ -91,7 +86,6 @@ export function LanguagePackCard() {
     },
     [list, startInstall, t],
   );
-
   // React to install completion toasts.
   const prevStateRef = React.useRef(install.state);
   React.useEffect(() => {
@@ -109,7 +103,6 @@ export function LanguagePackCard() {
       toast.info(t("languages.toast.install_cancelled"));
     }
   }, [install.state, install.code, list, t]);
-
   const handleRemove = React.useCallback(
     async (code: LanguageCode, isActive: boolean) => {
       const englishName =
@@ -141,14 +134,13 @@ export function LanguagePackCard() {
     },
     [i18n, remove, list, t],
   );
-
   return (
-    <div className="@container/main mx-auto p-2">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">{t("languages.page.title")}</h1>
-        <p className="text-muted-foreground">{t("languages.page.description")}</p>
-      </div>
-
+    <div className="@container/main mx-auto flex flex-col gap-6">
+      <PageHeader
+      icon={Languages}
+      title={t("languages.page.title")}
+      description={t("languages.page.description")}
+    />
       <div className="grid grid-cols-1 @3xl/main:grid-cols-2 grid-flow-row gap-4">
         {/* Active & Installed section */}
         <Card className="@container/card">
@@ -194,7 +186,6 @@ export function LanguagePackCard() {
             })}
           </CardContent>
         </Card>
-
         {/* Available section */}
         <Card className="@container/card">
           <CardHeader>

@@ -181,6 +181,55 @@
   animation: pulse-ring 2s ease-in-out infinite alternate;
 }
 
+/* Aurora backdrop — drifting gradient blobs (GSAP-web living gradient) */
+@keyframes aurora-1 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(8%, 6%) scale(1.12);
+  }
+}
+
+@keyframes aurora-2 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-7%, -5%) scale(1.08);
+  }
+}
+
+@keyframes aurora-3 {
+  0%,
+  100% {
+    transform: translate(-50%, 0) scale(1);
+  }
+  50% {
+    transform: translate(-42%, -4%) scale(1.15);
+  }
+}
+
+.animate-aurora-1 {
+  animation: aurora-1 16s ease-in-out infinite;
+}
+.animate-aurora-2 {
+  animation: aurora-2 20s ease-in-out infinite;
+}
+.animate-aurora-3 {
+  animation: aurora-3 24s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-aurora-1,
+  .animate-aurora-2,
+  .animate-aurora-3 {
+    animation: none;
+  }
+}
+
 /* Indeterminate progress bar — sliding bar across track */
 @keyframes progress-indeterminate {
   0% {

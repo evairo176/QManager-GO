@@ -1,7 +1,8 @@
 "use client";
-
 import { useMemo, useState } from "react";
 import { useTranslation, Trans } from "react-i18next";
+import { LockKeyhole, InfoIcon } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import BandCardsComponent from "./band-cards";
 import BandSettingsComponent from "./band-settings";
 import { useBandLocking } from "@/hooks/use-band-locking";
@@ -13,9 +14,7 @@ import {
   type BandCategory,
 } from "@/types/band-locking";
 import { DEFAULT_SCENARIOS } from "@/types/connection-scenario";
-import { InfoIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-
 // =============================================================================
 // BandLockingComponent — Page Coordinator
 // =============================================================================
@@ -31,7 +30,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 //   info banner is shown. This keeps the mental model clean: the scenario
 //   "owns" RF configuration. Switch to Balanced for manual band control.
 // =============================================================================
-
 const BandLockingComponent = () => {
   const { t } = useTranslation("cellular");
   const { data, isLoading: statusLoading } = useModemStatus();
@@ -50,7 +48,6 @@ const BandLockingComponent = () => {
     customScenarios,
     isLoading: scenariosLoading,
   } = useConnectionScenarios();
-
   // --- Shared SA / NR-DC slot -----------------------------------------------
   // The third card slot toggles between SA NR5G and NR-DC via a swap control.
   // Both target distinct AT params (nr5g_band vs nrdc_nr5g_band); only one is
@@ -59,10 +56,8 @@ const BandLockingComponent = () => {
     "sa_nr5g",
   );
   const swapTargetView = saSlotView === "sa_nr5g" ? "nrdc_nr5g" : "sa_nr5g";
-
   // --- Scenario override check ----------------------------------------------
   const isScenarioControlled = activeScenarioId !== "balanced";
-
   const activeScenarioName = useMemo(() => {
     if (!isScenarioControlled) return "";
     // Check defaults first
@@ -76,7 +71,6 @@ const BandLockingComponent = () => {
     // Fallback — ID without prefix
     return activeScenarioId;
   }, [activeScenarioId, isScenarioControlled, customScenarios]);
-
   // --- Band card definitions (translated) -----------------------------------
   // LTE + NSA are fixed cards; the third slot (SA / NR-DC) is rendered
   // separately below because it carries the swap control.
@@ -84,7 +78,6 @@ const BandLockingComponent = () => {
     { category: "lte" as BandCategory, title: t("cell_locking.band_locking.cards.lte.title"), description: t("cell_locking.band_locking.cards.lte.description") },
     { category: "nsa_nr5g" as BandCategory, title: t("cell_locking.band_locking.cards.nsa_nr5g.title"), description: t("cell_locking.band_locking.cards.nsa_nr5g.description") },
   ], [t]);
-
   // --- Two band layers ------------------------------------------------------
   // policyBands: bands the network/SIM actually uses (AT+QNWPREFCFG="policy_band",
   //   re-read on boot + SIM swap). These render in primary; bands outside this set
@@ -103,14 +96,12 @@ const BandLockingComponent = () => {
     sa_nr5g: parseBandString(data?.device.supported_sa_nr5g_bands),
     nrdc_nr5g: parseBandString(data?.device.supported_nrdc_nr5g_bands),
   };
-
   const hwBands: Record<BandCategory, number[]> = {
     lte: parseBandString(data?.device.hw_lte_bands),
     nsa_nr5g: parseBandString(data?.device.hw_nsa_nr5g_bands),
     sa_nr5g: parseBandString(data?.device.hw_sa_nr5g_bands),
     nrdc_nr5g: [],
   };
-
   // The checkbox universe per category — hw capability when known, else policy set.
   const supportedBands: Record<BandCategory, number[]> = {
     lte: hwBands.lte.length > 0 ? hwBands.lte : policyBands.lte,
@@ -120,24 +111,17 @@ const BandLockingComponent = () => {
     // checkbox set; falls back to policy nrdc pre-upgrade.
     nrdc_nr5g: hwBands.sa_nr5g.length > 0 ? hwBands.sa_nr5g : policyBands.nrdc_nr5g,
   };
-
   // --- Derive active bands from carrier_components (QCAINFO) ----------------
   const carrierComponents = data?.network.carrier_components ?? [];
-
   // Overall loading: either poller hasn't loaded yet or bands haven't loaded
   const isPageLoading = statusLoading || bandsLoading || scenariosLoading;
-
   return (
-    <div className="@container/main mx-auto p-2">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">
-          {t("cell_locking.band_locking.page.title")}
-        </h1>
-        <p className="text-muted-foreground">
-          {t("cell_locking.band_locking.page.description")}
-        </p>
-      </div>
-
+    <div className="@container/main mx-auto flex flex-col gap-6">
+      <PageHeader
+      icon={LockKeyhole}
+      title={t("cell_locking.band_locking.page.title")}
+      description={t("cell_locking.band_locking.page.description")}
+    />
       {/* Scenario override banner */}
       {isScenarioControlled && !isPageLoading && (
         <Alert className="mb-4">
@@ -154,7 +138,6 @@ const BandLockingComponent = () => {
           </AlertDescription>
         </Alert>
       )}
-
       <div className="grid grid-cols-1 @3xl/main:grid-cols-2 grid-flow-row gap-4">
         <BandSettingsComponent
           failover={failover}
@@ -184,7 +167,6 @@ const BandLockingComponent = () => {
             disabled={isScenarioControlled}
           />
         ))}
-
         {/* Shared SA / NR-DC slot — key remounts the card on swap so its
             checkbox state re-initializes from the new mode's locked bands and
             the entrance animation replays as a visible "mode changed" cue. */}
@@ -222,5 +204,4 @@ const BandLockingComponent = () => {
     </div>
   );
 };
-
 export default BandLockingComponent;

@@ -1,6 +1,8 @@
 "use client";
 
 import { useTranslation } from "react-i18next";
+import { MessageCircle } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import SmsInboxCard from "./sms-inbox-card";
 import { useSms } from "@/hooks/use-sms";
 
@@ -18,13 +20,12 @@ const SmsCenterComponent = () => {
   } = useSms();
 
   return (
-    <div className="@container/main mx-auto p-2">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">{t("sms.page.title")}</h1>
-        <p className="text-muted-foreground">
-          {t("sms.page.description")}
-        </p>
-      </div>
+    <div className="@container/main mx-auto flex flex-col gap-6">
+      <PageHeader
+      icon={MessageCircle}
+      title={t("sms.page.title")}
+      description={t("sms.page.description")}
+    />
       <div className="grid grid-cols-1 grid-flow-row gap-4">
         <SmsInboxCard
           data={data}

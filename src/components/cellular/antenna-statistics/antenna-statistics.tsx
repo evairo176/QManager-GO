@@ -1,9 +1,9 @@
 "use client";
-
 import React, { useMemo } from "react";
 import { motion } from "motion/react";
-import { SignalIcon } from "lucide-react";
+import { SignalIcon, SignalHigh } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "@/components/page-header";
 import {
   Card,
   CardContent,
@@ -29,7 +29,6 @@ import {
   SINR_THRESHOLDS,
 } from "@/types/modem-status";
 import type { SignalPerAntenna } from "@/types/modem-status";
-
 const QUALITY_BAR_COLORS: Record<string, string> = {
   excellent: "bg-success",
   good: "bg-success",
@@ -37,11 +36,9 @@ const QUALITY_BAR_COLORS: Record<string, string> = {
   poor: "bg-destructive",
   none: "bg-muted-foreground",
 };
-
 // =============================================================================
 // Helpers
 // =============================================================================
-
 /** Check if a technology has any non-null antenna data */
 function hasData(
   signal: SignalPerAntenna | undefined,
@@ -53,17 +50,14 @@ function hasData(
   const sinr = signal[`${prefix}_sinr`];
   return [...rsrp, ...rsrq, ...sinr].some((v) => v !== null);
 }
-
 /** Format a signal value with unit, or "—" for null */
 function fmtSignal(value: number | null, unit: string): string {
   if (value === null || value === undefined) return "—";
   return `${value} ${unit}`;
 }
-
 // =============================================================================
 // Sub-components
 // =============================================================================
-
 /** Animated progress bar (spring scaleX) — matches active-bands.tsx pattern */
 function AnimatedProgress({
   value,
@@ -93,7 +87,6 @@ function AnimatedProgress({
     </div>
   );
 }
-
 /** A single metric row: label → progress bar → colored value */
 function MetricRow({
   label,
@@ -109,7 +102,6 @@ function MetricRow({
   const { t } = useTranslation("cellular");
   const quality = getSignalQuality(value, thresholds);
   const progress = signalToProgress(value, thresholds);
-
   return (
     <div className="flex items-center gap-2">
       <span className="text-xs uppercase tracking-wide text-muted-foreground w-10 shrink-0">
@@ -126,7 +118,6 @@ function MetricRow({
     </div>
   );
 }
-
 /** A single antenna section with 3 stacked metric rows */
 function AntennaSection({
   name,
@@ -142,7 +133,6 @@ function AntennaSection({
   sinr: number | null;
 }) {
   const isInactive = rsrp === null && rsrq === null && sinr === null;
-
   return (
     <div className={isInactive ? "opacity-25" : ""}>
       <div className="flex items-baseline gap-1.5 mb-2">
@@ -157,7 +147,6 @@ function AntennaSection({
     </div>
   );
 }
-
 /** Technology signal card (LTE or NR5G) */
 function TechCard({
   title,
@@ -177,7 +166,6 @@ function TechCard({
   portMeta: { name: string; rx: string; description: string }[];
 }) {
   const active = hasData(signal, prefix);
-
   if (!active) {
     return (
       <Card>
@@ -201,11 +189,9 @@ function TechCard({
       </Card>
     );
   }
-
   const rsrp = signal![`${prefix}_rsrp`];
   const rsrq = signal![`${prefix}_rsrq`];
   const sinr = signal![`${prefix}_sinr`];
-
   return (
     <Card>
       <CardHeader>
@@ -246,11 +232,9 @@ function TechCard({
     </Card>
   );
 }
-
 // =============================================================================
 // Loading Skeleton
 // =============================================================================
-
 function AntennaStatsSkeleton() {
   return (
     <div className="grid grid-cols-1 @3xl/main:grid-cols-2 gap-4">
@@ -283,16 +267,13 @@ function AntennaStatsSkeleton() {
     </div>
   );
 }
-
 // =============================================================================
 // Main Component
 // =============================================================================
-
 export default function AntennaStatistics() {
   const { t } = useTranslation("cellular");
   const { data, isLoading } = useModemStatus();
   const signal = data?.signal_per_antenna;
-
   const portMeta = useMemo(
     () => [
       {
@@ -318,13 +299,10 @@ export default function AntennaStatistics() {
     ],
     [t]
   );
-
   const lteHasData = hasData(signal, "lte");
   const nrHasData = hasData(signal, "nr");
-
   // Dynamic ordering: active tech first. Default LTE first.
   const nrFirst = nrHasData && !lteHasData;
-
   const lteCard = (
     <TechCard
       title={t("antennas.statistics.lte_card.title")}
@@ -336,7 +314,6 @@ export default function AntennaStatistics() {
       portMeta={portMeta}
     />
   );
-
   const nrCard = (
     <TechCard
       title={t("antennas.statistics.nr_card.title")}
@@ -348,17 +325,13 @@ export default function AntennaStatistics() {
       portMeta={portMeta}
     />
   );
-
   return (
-    <div className="@container/main mx-auto p-2">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">
-          {t("antennas.statistics.page.title")}
-        </h1>
-        <p className="text-muted-foreground">
-          {t("antennas.statistics.page.description")}
-        </p>
-      </div>
+    <div className="@container/main mx-auto flex flex-col gap-6">
+      <PageHeader
+      icon={SignalHigh}
+      title={t("antennas.statistics.page.title")}
+      description={t("antennas.statistics.page.description")}
+    />
       {isLoading ? (
         <AntennaStatsSkeleton />
       ) : (
