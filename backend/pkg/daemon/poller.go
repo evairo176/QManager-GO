@@ -409,7 +409,7 @@ func (p *Poller) pollOnce() {
 			"apn":                      apn,
 			"phone_number":             phoneNumber,
 			"build_date":               buildDate,
-			"qmanager_version":         "v0.2.4-beta.1",
+			"qmanager_version":         "v0.2.4",
 			"lte_category":             "Cat-20",
 			"mimo":                     "4x4",
 			"supported_lte_bands":      "1:3:5:7:8:20:28:38:40:41:42:43",

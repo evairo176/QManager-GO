@@ -379,7 +379,7 @@ func (s *Server) HandleAboutDevice(w http.ResponseWriter, r *http.Request) {
 	model := "Modem"
 	firmware := "-"
 	imei := "-"
-	qmanagerVersion := "v0.2.4-beta.1"
+	qmanagerVersion := "v0.2.4"
 
 	if statusData, err := os.ReadFile("/tmp/qmanager_status.json"); err == nil {
 		var status map[string]interface{}
