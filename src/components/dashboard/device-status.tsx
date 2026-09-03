@@ -8,7 +8,7 @@ import { containerVariants, itemVariants } from "@/lib/motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Server } from "lucide-react";
 
 import type { DeviceStatus } from "@/types/modem-status";
 
@@ -86,9 +86,14 @@ const DeviceStatusComponent = ({
     return (
       <Card className="@container/card col-span-2" aria-busy="true">
         <CardHeader>
-          <CardTitle className="text-2xl font-semibold @[250px]/card:text-3xl text-center flex-1">
-            {t("device_status.title")}
-          </CardTitle>
+          <div className="flex items-center justify-center gap-2.5">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary transition-transform duration-300 hover:scale-105">
+              <Server className="size-4" aria-hidden="true" />
+            </span>
+            <CardTitle className="text-2xl font-semibold @[250px]/card:text-3xl text-center flex-1">
+              {t("device_status.title")}
+            </CardTitle>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4">
@@ -123,9 +128,14 @@ const DeviceStatusComponent = ({
   return (
     <Card className="@container/card col-span-2">
       <CardHeader>
-        <CardTitle className="text-2xl font-semibold @[250px]/card:text-3xl text-center flex-1">
-          {t("device_status.title")}
-        </CardTitle>
+        <div className="flex items-center justify-center gap-2.5">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary transition-transform duration-300 hover:scale-105">
+            <Server className="size-4" aria-hidden="true" />
+          </span>
+          <CardTitle className="text-2xl font-semibold @[250px]/card:text-3xl text-center flex-1">
+            {t("device_status.title")}
+          </CardTitle>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="grid gap-4">

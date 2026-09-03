@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
+import { motion } from "motion/react";
 import { RadioTower, Activity, Cpu, Thermometer, ShieldCheck, Wifi, Sparkles, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { containerVariants, itemVariants } from "@/lib/motion";
 import type { ModemStatus } from "@/types/modem-status";
 
 interface CockpitHeroProps {
@@ -84,9 +86,14 @@ export function CockpitHero({ data, isLoading }: CockpitHeroProps) {
         </div>
 
         {/* Right: Telemetry Quick Gauges */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 w-full lg:w-auto">
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 w-full lg:w-auto"
+        >
           {/* 1. Connection Status */}
-          <div className="rounded-xl border border-border/50 bg-background/50 backdrop-blur-md px-3 py-2.5 shadow-2xs">
+          <motion.div variants={itemVariants} className="rounded-xl border border-border/50 bg-background/50 backdrop-blur-md px-3 py-2.5 shadow-2xs">
             <div className="flex items-center justify-between text-muted-foreground text-[11px] font-medium">
               <span>Link Status</span>
               <Wifi className="size-3 text-emerald-500" />
@@ -100,10 +107,10 @@ export function CockpitHero({ data, isLoading }: CockpitHeroProps) {
                 {isOnline ? "CONNECTED" : isLoading ? "CONNECTING" : "OFFLINE"}
               </span>
             </div>
-          </div>
+          </motion.div>
 
           {/* 2. Live Latency */}
-          <div className="rounded-xl border border-border/50 bg-background/50 backdrop-blur-md px-3 py-2.5 shadow-2xs">
+          <motion.div variants={itemVariants} className="rounded-xl border border-border/50 bg-background/50 backdrop-blur-md px-3 py-2.5 shadow-2xs">
             <div className="flex items-center justify-between text-muted-foreground text-[11px] font-medium">
               <span>Ping RTT</span>
               <Activity className="size-3 text-blue-500" />
@@ -119,10 +126,10 @@ export function CockpitHero({ data, isLoading }: CockpitHeroProps) {
                 </span>
               )}
             </div>
-          </div>
+          </motion.div>
 
           {/* 3. Aggregated Bandwidth */}
-          <div className="rounded-xl border border-border/50 bg-background/50 backdrop-blur-md px-3 py-2.5 shadow-2xs">
+          <motion.div variants={itemVariants} className="rounded-xl border border-border/50 bg-background/50 backdrop-blur-md px-3 py-2.5 shadow-2xs">
             <div className="flex items-center justify-between text-muted-foreground text-[11px] font-medium">
               <span>Bandwidth</span>
               <Layers className="size-3 text-purple-500" />
@@ -133,10 +140,10 @@ export function CockpitHero({ data, isLoading }: CockpitHeroProps) {
               </span>
               <span className="text-[10px] text-muted-foreground font-mono">MHz</span>
             </div>
-          </div>
+          </motion.div>
 
           {/* 4. Device Thermal */}
-          <div className="rounded-xl border border-border/50 bg-background/50 backdrop-blur-md px-3 py-2.5 shadow-2xs">
+          <motion.div variants={itemVariants} className="rounded-xl border border-border/50 bg-background/50 backdrop-blur-md px-3 py-2.5 shadow-2xs">
             <div className="flex items-center justify-between text-muted-foreground text-[11px] font-medium">
               <span>Modem Temp</span>
               <Thermometer className={cn(
@@ -156,8 +163,8 @@ export function CockpitHero({ data, isLoading }: CockpitHeroProps) {
                 {temp && temp >= 60 ? "Hot" : temp && temp >= 45 ? "Warm" : "Optimal"}
               </span>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </div>
     </div>
   );

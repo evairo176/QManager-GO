@@ -286,3 +286,81 @@
     animation: none;
     mix-blend-mode: normal;
 }
+
+/* =============================================================================
+   GSAP-web design system utilities
+   ============================================================================= */
+
+/* Glass surface — backdrop blur + translucent fill + hairline border */
+.glass-surface {
+  @apply border-border/60 bg-background/70 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60;
+}
+
+/* Gradient text (headline) */
+.text-gradient {
+  @apply bg-gradient-to-br from-foreground via-foreground/85 to-foreground/65 bg-clip-text text-transparent;
+}
+
+/* Premium card glow on hover — subtle primary ring bloom */
+.card-glow {
+  @apply transition-all duration-300;
+}
+.card-glow:hover {
+  box-shadow:
+    0 0 0 1px oklch(0.5 0.2 264 / 0.15),
+    0 8px 32px -8px oklch(0.5 0.2 264 / 0.18);
+}
+
+/* Shine sweep for primary buttons (GSAP-web micro-interaction) */
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+}
+.btn-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    oklch(1 0 0 / 0.25) 50%,
+    transparent 60%
+  );
+  transform: translateX(-130%);
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+.btn-shine:hover::after {
+  transform: translateX(130%);
+}
+
+/* Thin gradient divider */
+.gradient-divider {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    oklch(0.5 0.2 264 / 0.25),
+    transparent
+  );
+}
+
+/* Subtle scrollbar polish for the embedded web */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.6 0.05 264 / 0.4) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: oklch(0.6 0.05 264 / 0.35);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.6 0.05 264 / 0.55);
+}

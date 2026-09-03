@@ -18,9 +18,9 @@ export function HeaderStatusPill() {
       {/* Live Connection Status Badge */}
       <div
         className={cn(
-          "hidden sm:inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border transition-all duration-300",
+          "hidden sm:inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border shadow-sm backdrop-blur-md transition-all duration-300",
           isOnline
-            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25 shadow-emerald-500/5"
             : isLoading
               ? "bg-muted text-muted-foreground border-border/60"
               : "bg-destructive/10 text-destructive border-destructive/20",

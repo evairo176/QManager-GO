@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CardSimIcon, Plane } from "lucide-react";
+import { CardSimIcon, Network, Plane } from "lucide-react";
 
 import {
   MdOutline5G,
@@ -221,9 +221,14 @@ const NetworkStatusComponent = ({
     <Card className="@container/card">
       <CardHeader>
         <div className="flex md:flex-row flex-col xl:items-center justify-center xl:justify-between gap-2">
-          <CardTitle className="text-2xl font-semibold @[250px]/card:text-3xl">
-            {t("network.title")}
-          </CardTitle>
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary transition-transform duration-300 hover:scale-105">
+              <Network className="size-4" aria-hidden="true" />
+            </span>
+            <CardTitle className="text-2xl font-semibold @[250px]/card:text-3xl">
+              {t("network.title")}
+            </CardTitle>
+          </div>
 
           {/* Status badges */}
           {isLoading ? (

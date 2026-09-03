@@ -92,7 +92,7 @@ export function LayoutSubNav({ section }: { section: SectionType }) {
     <div className="relative mb-6 -mx-1 sm:mx-0">
       <nav
         aria-label={`${section} sub-navigation`}
-        className="flex items-center gap-1.5 overflow-x-auto p-1.5 rounded-xl bg-card/60 backdrop-blur-md border border-border/50 shadow-xs scrollbar-none"
+        className="glass-surface flex items-center gap-1.5 overflow-x-auto p-1.5 rounded-xl border shadow-sm scrollbar-none"
       >
         {items.map((item) => {
           // Exact match for base route, startsWith for subroutes
@@ -109,8 +109,8 @@ export function LayoutSubNav({ section }: { section: SectionType }) {
               className={cn(
                 "group relative flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200 shrink-0",
                 isActive
-                  ? "bg-primary text-primary-foreground shadow-xs shadow-primary/20"
-                  : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+                  ? "bg-gradient-to-b from-primary to-primary/90 text-primary-foreground shadow-md shadow-primary/25"
+                  : "text-muted-foreground hover:bg-muted/70 hover:text-foreground active:scale-[0.97]",
               )}
             >
               <Icon
