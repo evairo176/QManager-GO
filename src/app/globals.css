@@ -230,6 +230,13 @@
   }
 }
 
+/* Shimmer sweep for skeleton loaders */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 /* Indeterminate progress bar — sliding bar across track */
 @keyframes progress-indeterminate {
   0% {
